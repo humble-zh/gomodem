@@ -1,17 +1,20 @@
 package modem
 
-type m_qws_ep06 struct {
-	m_qws
+type M_qws_ep06 struct {
+	M_qws
 }
 
-func (m *m_qws_ep06) IsOK() error {
-	return nil
-}
+// func (m *M_qws_ep06) IsOK() error {
+// 	fmt.Println("ep06 ok")
+// 	return nil
+// }
 
-func (m *m_qws_ep06) IsSimReady() error {
-	return nil
-}
+// func (m *M_qws_ep06) IsSimReady() error {
+// 	fmt.Println("ep06 IsSimReady")
+// 	return nil
+// }
 
-func (m *m_qws_ep06) IsRegistertion() error {
-	return nil
-}
+// func (m *M_qws_ep06) IsRegistertion() error {
+// 	fmt.Println("ep06 IsRegistertion")
+// 	return nil
+// }
