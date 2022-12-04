@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"sync"
+	"time"
 )
 
 type IModem interface {
@@ -11,12 +13,12 @@ type IModem interface {
 	GoString() string
 	Open() error
 	Close() error
-	// StartLoop() error
-	// StopLoop() error
-	// Run() error
+	Run(wg *sync.WaitGroup) error
 	IsOK() error
 	IsSimReady() error
 	IsRegistertion() error
+	loopStart()
+	loopStop()
 }
 
 type Modem struct {
@@ -24,6 +26,7 @@ type Modem struct {
 	Model         string `json:"model"`
 	FindIfaceName string `json:"findifacename"`
 	FindATdevPath string `json:"findatdevpath"`
+	needstop      bool
 }
 
 func (m *Modem) String() string {
@@ -33,39 +36,69 @@ func (m *Modem) GoString() string {
 	return "CfgJsonBytes:'" + string(m.CfgJsonBytes) + "',Model:'" + m.Model + "',FindIfaceName:'" + m.FindIfaceName + "',FindIfaceName:'" + m.FindIfaceName + "'"
 }
 func (m *Modem) Open() error {
-	fmt.Println("modem Open")
+	// fmt.Println("modem Open")
 	if err := json.Unmarshal(m.CfgJsonBytes, m); err != nil {
-		fmt.Printf("json.Unmarshal()->:%v", err)
+		fmt.Printf("json.Unmarshal()->:%v\n", err)
 		return err
 	}
 	return nil
 }
-
 func (m *Modem) Close() error {
-	fmt.Println("modem Close")
+	// fmt.Printf("%s Close\n", m.Model)
+	return nil
+}
+
+func (m *Modem) Run(wg *sync.WaitGroup) error {
+	fmt.Printf("%s run\n", m.Model)
+	for {
+		if m.needstop {
+			fmt.Printf("%s needstop\n", m.Model)
+			break
+		}
+		time.Sleep(time.Second * 2)
+		fmt.Printf("%s runing\n", m.Model)
+	}
+	wg.Done()
+	fmt.Printf("%s Done\n", m.Model)
 	return nil
 }
 
 func (m *Modem) IsOK() error {
-	fmt.Println("modem IsOK")
+	fmt.Printf("%s IsOK\n", m.Model)
 	return nil
 }
 
 func (m *Modem) IsSimReady() error {
-	fmt.Println("modem IsSimReady")
+	fmt.Printf("%s IsSimReady\n", m.Model)
 	return nil
 }
 
 func (m *Modem) IsRegistertion() error {
-	fmt.Println("modem IsRegistertion")
+	fmt.Printf("%s IsRegistertion\n", m.Model)
 	return nil
 }
 
+func (m *Modem) loopStart() {
+	fmt.Printf("%s Loop starting\n", m.Model)
+	m.needstop = false
+}
+func (m *Modem) loopStop() {
+	fmt.Printf("%s Loop stoping\n", m.Model)
+	m.needstop = true
+}
+func Start(m IModem, wg *sync.WaitGroup) {
+	m.loopStart()
+	m.Run(wg)
+}
+func Stop(m IModem) {
+	m.loopStop()
+}
+
 func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
-	fmt.Println(string(jsonbytes))
+	// fmt.Println(string(jsonbytes))
 	rm := Modem{CfgJsonBytes: jsonbytes}
 	if err := json.Unmarshal(jsonbytes, &rm); err != nil {
-		fmt.Printf("json.Unmarshal()->:%v", err)
+		fmt.Printf("json.Unmarshal()->:%v\n", err)
 		return nil, err
 	}
 	switch rm.Model {

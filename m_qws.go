@@ -1,8 +1,9 @@
 package modem
 
 import (
-	"encoding/json"
 	"fmt"
+	"sync"
+	"time"
 )
 
 type M_qws struct {
@@ -10,35 +11,32 @@ type M_qws struct {
 	Quectel string `json:"quectel"`
 }
 
-func (m *M_qws) Open() error {
-	fmt.Println("qws Open")
-	if err := json.Unmarshal(m.CfgJsonBytes, m); err != nil {
-		fmt.Printf("json.Unmarshal()->:%v", err)
-		return err
+func (m *M_qws) Run(wg *sync.WaitGroup) error {
+	fmt.Printf("QWS %s run\n", m.Model)
+	for {
+		if m.needstop {
+			fmt.Printf("QWS %s needstop\n", m.Model)
+			break
+		}
+		time.Sleep(time.Second * 2)
+		fmt.Printf("QWS %s runing\n", m.Model)
 	}
-	return nil
-}
-
-func (m *M_qws) Close() error {
-	fmt.Println("qws Close")
+	wg.Done()
+	fmt.Printf("QWS %s Done\n", m.Model)
 	return nil
 }
 
 func (m *M_qws) IsOK() error {
-	fmt.Println("qws IsOK")
+	fmt.Printf("QWS %s IsOK\n", m.Model)
 	return nil
 }
 
 func (m *M_qws) IsSimReady() error {
-	fmt.Println("qws IsSimReady")
+	fmt.Printf("QWS %s IsSimReady\n", m.Model)
 	return nil
 }
 
 func (m *M_qws) IsRegistertion() error {
-	fmt.Println("qws IsRegistertion")
+	fmt.Printf("QWS %s IsRegistertion\n", m.Model)
 	return nil
 }
-
-// func OpenFile() (Modem, error) {
-// 	fmt.Println("hello")
-// }
