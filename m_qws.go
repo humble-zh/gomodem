@@ -1,7 +1,9 @@
 package modem
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -97,32 +99,32 @@ OuterLop:
 				fmt.Println(err)
 				m.state = MSTAT_INIT
 			} else {
+				m.state = MSTAT_HOTPLUGDETECT
+			}
+		case MSTAT_HOTPLUGDETECT:
+			fmt.Println("MSTAT_HOTPLUGDETECT")
+			if err := m.hotplugDetect(); err != nil {
+				fmt.Println(err)
+				m.state = MSTAT_INIT
+			} else {
+				m.state = MSTAT_CHECK_SIMREADY
+			}
+		case MSTAT_CHECK_SIMREADY:
+			fmt.Println("MSTAT_CHECK_SIMREADY")
+			if err := m.isSimReady(); err != nil {
+				fmt.Println(err)
+				m.state = MSTAT_SOFTRESET
+			} else {
+				m.state = MSTAT_CHECK_REGISTRATIONM
+			}
+		case MSTAT_CHECK_REGISTRATIONM:
+			fmt.Println("MSTAT_CHECK_REGISTRATIONM")
+			if err := m.isRegistertion(); err != nil {
+				fmt.Println(err)
+				m.state = MSTAT_SOFTRESET
+			} else {
 				m.state = MSTAT_LOOPING
 			}
-			//     rc = mmcall(m_noecho);
-			//     if(E_OK == rc){ m->state = M_STATE_HOTPLUGDETECT; }
-			//     else if(E_AT_RSP_ERROR == rc){ m->state = M_STATE_SOFTRESET; } // 模组回复ERROR
-			//     else{ m->state = M_STATE_HARDRESET; } //模组回复超时或读写失败
-			//     break;
-
-			// case M_STATE_HOTPLUGDETECT:
-			//     rc = mmcall(m_hotplugdetect);
-			//     if(E_OK == rc){ m->state = M_STATE_CHECK_SIM_READY; }
-			//     else if(E_AT_RSP_ERROR == rc){ m->state = M_STATE_SOFTRESET; } // 模组回复ERROR
-			//     else{ m->state = M_STATE_HARDRESET; } //模组回复超时或读写失败
-			//     break;
-			// case M_STATE_CHECK_SIM_READY:
-			//     rc = mmcall(m_simready);
-			//     if(E_OK == rc){ m->state = M_STATE_CHECK_REGISTRATION; }
-			//     else if(E_SIMABSENT == rc || E_AT_RSP_ERROR == rc){ m->state = M_STATE_SOFTRESET; }
-			//     else{ m->state = M_STATE_HARDRESET; } //模组回复超时或读写失败
-			//     break;
-			// case M_STATE_CHECK_REGISTRATION:
-			//     rc = mmcall(m_registration);
-			//     if(E_OK == rc){ m->state = M_STATE_ROUTINE; }
-			//     else if(E_UNREGISTRATION == rc){ m->state = M_STATE_SOFTRESET; }
-			//     else{ m->state = M_STATE_HARDRESET; }
-			//     break;
 
 		case MSTAT_LOOPING:
 			fmt.Println("MSTAT_LOOPING")
@@ -147,7 +149,7 @@ OuterLop:
 			}
 		case MSTAT_HARDRESET:
 			fmt.Println("MSTAT_HARDRESET")
-			if err := m.atHardReset(); err != nil {
+			if err := m.hardReset(); err != nil {
 				fmt.Println(err)
 			} else {
 				m.state = MSTAT_INIT
@@ -162,16 +164,6 @@ OuterLop:
 	return nil
 }
 
-func (m *M_qws) isSimReady() error {
-	fmt.Printf("QWS %s isSimReady\n", m.Model)
-	return nil
-}
-
-func (m *M_qws) isRegistertion() error {
-	fmt.Printf("QWS %s isRegistertion\n", m.Model)
-	return nil
-}
-
 func (m *M_qws) stopQuectel() error {
 	fmt.Printf("QWS %s stopQuectel\n", m.Model)
 	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifacename+" -f /tmp/qws_"+m.ifacename+".log")
@@ -179,26 +171,81 @@ func (m *M_qws) stopQuectel() error {
 	m.cmd.Run()
 	return nil
 }
-
 func (m *M_qws) startQuectel() error {
-	fmt.Printf("QWS %s startQuectel\n", m.Model)
 	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifacename+" -f /tmp/qws_"+m.ifacename+".log")
-	fmt.Println(m.cmd.Args)
 	out, err := m.cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("cmd.Run(%+v)->%+v,%v\n", m.cmd, out, err)
-	}
-	fmt.Printf("cmd.Run(%+v)->%+v\n", m.cmd, out)
-	if len(out) != 0 {
+	// if err != nil {
+	// 	fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,%v\n", m.Model, m.cmd, out, err)
+	// }
+	if err == nil && len(out) != 0 {
+		fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,is already run\n", m.Model, m.cmd, out)
 		return nil
 	}
+	fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,%v\n", m.Model, m.cmd, out, err)
 
 	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "-f", "/tmp/qws_"+m.ifacename+".log", "&")
-	fmt.Println(m.cmd.Args)
 	go func() {
-		_ = m.cmd.Start()
+		err = m.cmd.Start()
+		fmt.Printf("QWS %s startQuectel() cmd.Start(%+v)->%+v\n", m.Model, m.cmd, err)
 		m.cmd.Wait()
 		fmt.Println("go stop")
 	}()
 	return nil
 }
+
+func (m *M_qws) hotplugDetect() error {
+	atcmd := []byte("at+qsimdet=1,1\r\n")
+	buf := make([]byte, 128)
+	n, err := m.atWriteRead(atcmd, buf)
+	if err != nil {
+		return err
+	}
+	if bytes.Contains(buf, []byte("OK")) {
+		fmt.Printf("QWS %s hotplugDetect()->ok\n", m.Model)
+		return nil
+	}
+	fmt.Printf("QWS %s hotplugDetect()->Unknow [%q]\n", m.Model, buf[:n])
+	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
+}
+
+func (m *M_qws) isSimReady() error {
+	for i := 0; i < 10; i++ {
+		atcmd := []byte("at+cpin?\r\n")
+		buf := make([]byte, 128)
+		n, err := m.atWriteRead(atcmd, buf)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(buf, []byte("READY")) { //\r\n+CPIN: READY\r\nOK\r\n
+			fmt.Printf("QWS %s isSimReady()->ok\n", m.Model)
+			return nil
+		} else if bytes.Contains(buf, []byte("ERROR")) { //"\r\n+CME ERROR: 13\r\n" "\r\n+CME ERROR: 10\r\n"
+			fmt.Printf("QWS %s isSimReady()->ERROR,cnt%d\n", m.Model, i)
+			time.Sleep(time.Second * 3)
+		} else {
+			fmt.Printf("QWS %s isSimReady()->Unknow [%q]\n", m.Model, buf[:n])
+			return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
+		}
+	}
+	return errors.New("SimIsNotReady")
+}
+
+func (m *M_qws) isRegistertion() error {
+	for i := 0; i < 10; i++ {
+		atcmd := []byte("at+cereg?\r\n")
+		buf := make([]byte, 128)
+		n, err := m.atWriteRead(atcmd, buf)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(buf, []byte("CEREG: 0,1")) || bytes.Contains(buf, []byte("CEREG: 0,5")) { //\r\n+CEREG: 0,1\r\nOK\r\n  或者0,5
+			fmt.Printf("QWS %s isRegistertion()->ok\n", m.Model)
+			return nil
+		}
+		fmt.Printf("QWS %s isRegistertion()->no [%q],cnt%d\n", m.Model, buf[:n], i)
+		time.Sleep(time.Second * 3)
+	}
+	return errors.New("isNotRegistertion")
+}
+
+//TODO 读取信号

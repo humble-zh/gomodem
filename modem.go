@@ -34,6 +34,9 @@ const (
 	MSTAT_OPEN_ATDEV
 
 	MSTAT_NOECHO
+	MSTAT_HOTPLUGDETECT
+	MSTAT_CHECK_SIMREADY
+	MSTAT_CHECK_REGISTRATIONM
 	MSTAT_LOOPING
 	MSTAT_SOFTRESET
 	MSTAT_HARDRESET
@@ -228,7 +231,7 @@ func (m *Modem) atSoftReset() error {
 	}
 	return errors.New("Unknow " + fmt.Sprintf("%q", bufcfun1[:n]))
 }
-func (m *Modem) atHardReset() error {
+func (m *Modem) hardReset() error {
 	fmt.Printf("Modem %s hardreset doNothing\n", m.Model)
 	return nil
 }
@@ -245,6 +248,11 @@ func (m *Modem) atIsOK() error {
 		return nil
 	}
 	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
+}
+
+func (m *Modem) hotplugDetect() error {
+	fmt.Printf("%s hotplugDetect\n", m.Model)
+	return nil
 }
 
 func (m *Modem) isSimReady() error {
