@@ -18,7 +18,8 @@ func main() {
 	// fmt.Printf("%#v\n", mslice)
 
 	// m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"ep06\",\"findifacename\":\"ls -l /sys/class/net |awk -F'[/]' '{if($9~/1-1:1.4/){ print $NF }}'\",\"findatdevpath\":\"ls -l /sys/class/tty/ttyUSB*|awk -F'[/]' '{if($13~/1-1:1.3/){ print \\\"/dev/\\\"$NF }}'\",\"quectel\":\"/usr/bin/quectel-CM\"}"))
-	m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"ep06\",\"usbbusportid\":\"1-1:1\",\"quectel\":\"/usr/bin/quectel-CM\"}"))
+	m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"ep06\",\"findifacename\":\"ls -l /sys/class/net|grep '1-1:1.4'|awk -F'[/]' '{ print $NF }'\",\"findatdevpath\":\"ls -l /sys/class/tty/ttyUSB*|grep '1-1:1.3'|awk -F'[/]' '{ print \\\"/dev/\\\"$NF }'\",\"quectel\":\"/usr/bin/quectel-CM\"}"))
+	// m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"rm500q\",\"findifacename\":\"ls -l /sys/class/net|grep '2-3:1.4'|awk -F'[/]' '{ print $NF }'\",\"findatdevpath\":\"ls -l /sys/class/tty/ttyUSB*|grep '2-3:1.3'|awk -F'[/]' '{ print \\\"/dev/\\\"$NF }'\",\"quectel\":\"/usr/bin/quectel-CM\"}"))
 	if err != nil {
 		fmt.Println(err)
 		return

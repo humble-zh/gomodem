@@ -18,8 +18,7 @@ type M_qws struct {
 
 func (m *M_qws) String() string {
 	// return "CfgJsonBytes:'" + string(m.CfgJsonBytes) + "',\n Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n FindIfaceName:'" + m.FindIfaceName + "'\n"
-	// return "Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindIfaceName + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n Quectel:'" + m.Quectel + "'\n"
-	return "Model:'" + m.Model + "',\n USBbusPortID:'" + m.USBbusPortID + "',\n Quectel:'" + m.Quectel + "'\n"
+	return "Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindIfaceName + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n Quectel:'" + m.Quectel + "'\n"
 }
 func (m *M_qws) GoString() string {
 	return m.String()
@@ -249,3 +248,16 @@ func (m *M_qws) isRegistertion() error {
 }
 
 //TODO 读取信号
+//static int m_qws_referencesignalreceivingpower(modem_t *m, char *e_out, uint16_t l4e_out)
+//{
+//    check_arg_null(e_out); check_arg_zero(l4e_out);
+//    check_arg_null_o(e_out, l4e_out, m);
+//    m_at_t *at = &m->at;
+//    char rdbuf[1024] = {0}; //+QENG: "servingcell","NOCONN","LTE","FDD",460,11,760C614,268,2452,5,3,3,751B,-104,-11,-76,11,11\r\nOK
+//    int rc = atmcallo(e_out, l4e_out, m_wr_rd, "at+qeng=\"servingcell\"\r\n", rdbuf, sizeof(rdbuf));
+//    if(rc <= 0){ mle("rc:%d", rc); return rc; }
+//    char *atarr[30] = {0};
+//    int strcnt = atstr_slice(rdbuf, atarr, sizeof(atarr)/sizeof(char *));
+//    // for(uint8_t i = 0; i < strcnt; i++){ mld("%s", atarr[i]); }
+//    return E_OK;
+//}

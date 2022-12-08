@@ -44,22 +44,20 @@ const (
 )
 
 type Modem struct {
-	CfgJsonBytes []byte
-	Model        string `json:"model"`
-	USBbusPortID string `json:"usbbusportid"`
-	// FindIfaceName string `json:"findifacename"`
-	// FindATdevPath string `json:"findatdevpath"`
-	needstop  bool
-	state     MState
-	ifacename string
-	atdevpath string
-	at        *serial.Port
+	CfgJsonBytes  []byte
+	Model         string `json:"model"`
+	FindIfaceName string `json:"findifacename"`
+	FindATdevPath string `json:"findatdevpath"`
+	needstop      bool
+	state         MState
+	ifacename     string
+	atdevpath     string
+	at            *serial.Port
 }
 
 func (m *Modem) String() string {
 	// return "CfgJsonBytes:'" + string(m.CfgJsonBytes) + "',\n Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n FindIfaceName:'" + m.FindIfaceName + "'\n"
-	// return "Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindIfaceName + "',\n FindIfaceName:'" + m.FindATdevPath + "'\n"
-	return "Model:'" + m.Model + "',\n USBbusPortID:'" + m.USBbusPortID + "'\n"
+	return "Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindIfaceName + "',\n FindIfaceName:'" + m.FindATdevPath + "'\n"
 }
 func (m *Modem) GoString() string {
 	return m.String()
@@ -94,26 +92,13 @@ func (m *Modem) Run(wg *sync.WaitGroup) error {
 
 // ls -l /sys/class/net |awk -F'[/]' '{if($9~/1-1:1.4/){ print $NF }}'
 func (m *Modem) isIfaceNameChange() bool {
-	fmt.Printf("Modem %s isIfaceNameChange\n", m.Model)
-	c1 := exec.Command("ls", "-l", "/sys/class/net")
-	c2 := exec.Command("awk", "-F", "[/]", "{if($9~/"+m.USBbusPortID+".4/){ print $NF }}")
-	c2.Stdin, _ = c1.StdoutPipe() //把c1的输出作为c2的输入
+	cmd := exec.Command("bash", "-c", m.FindIfaceName)
 	var stdout, stderr bytes.Buffer
-	c2.Stdout = &stdout // 标准输出
-	c2.Stderr = &stderr // 标准错误
-	fmt.Printf("%+v|%+v\n", c1, c2)
-	if err := c2.Start(); err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-	if err := c1.Run(); err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-	if err := c2.Wait(); err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-
+	cmd.Stdout = &stdout // 标准输出
+	cmd.Stderr = &stderr // 标准错误
+	err := cmd.Run()
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
-	fmt.Printf("out:'%s',err:'%s'\n", outStr, errStr)
+	fmt.Printf("Modem %s isIfaceNameChange cmd.Run(%+v)->%v,%s,%s\n", m.Model, cmd, err, outStr, errStr)
 	if strings.Compare(m.ifacename, outStr) != 0 {
 		fmt.Printf("iface:'%s'->'%s'\n", m.ifacename, outStr)
 		m.ifacename = outStr
@@ -125,26 +110,13 @@ func (m *Modem) isIfaceNameChange() bool {
 // ls -l /sys/class/tty/ttyUSB*|awk -F'[/]' '{if($13~/1-1:1.3/){ print "/dev/"$NF }}' go exec不能用通配符
 // ls -l /sys/class/tty/|awk -F'[/ ]' '{if($20~/1-1:1.3/){ print "/dev/"$NF }}'
 func (m *Modem) isATdevPathChange() bool {
-	fmt.Printf("Modem %s isATdevPathChange\n", m.Model)
-	c1 := exec.Command("ls", "-l", "/sys/class/tty/")
-	c2 := exec.Command("awk", "-F", "[/ ]", "{if($20~/"+m.USBbusPortID+".3/){ print \"/dev/\"$NF }}")
-	c2.Stdin, _ = c1.StdoutPipe() //把c1的输出作为c2的输入
+	cmd := exec.Command("bash", "-c", m.FindATdevPath)
 	var stdout, stderr bytes.Buffer
-	c2.Stdout = &stdout // 标准输出
-	c2.Stderr = &stderr // 标准错误
-	fmt.Printf("%+v|%+v\n", c1, c2)
-	if err := c2.Start(); err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-	if err := c1.Run(); err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-	if err := c2.Wait(); err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-
+	cmd.Stdout = &stdout // 标准输出
+	cmd.Stderr = &stderr // 标准错误
+	err := cmd.Run()
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
-	fmt.Printf("out:'%s',err:'%s'\n", outStr, errStr)
+	fmt.Printf("Modem %s isATdevPathChange cmd.Run(%+v)->%v,%s,%s\n", m.Model, cmd, err, outStr, errStr)
 	if strings.Compare(m.atdevpath, outStr) != 0 {
 		fmt.Printf("atdevpath:'%s'->'%s'\n", m.atdevpath, outStr)
 		m.atdevpath = outStr
