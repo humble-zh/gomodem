@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -165,13 +166,13 @@ OuterLop:
 
 func (m *M_qws) stopQuectel() error {
 	fmt.Printf("QWS %s stopQuectel\n", m.Model)
-	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifacename+" -f /tmp/qws_"+m.ifacename+".log")
+	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifacename)
 	fmt.Println(m.cmd.Args)
 	m.cmd.Run()
 	return nil
 }
 func (m *M_qws) startQuectel() error {
-	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifacename+" -f /tmp/qws_"+m.ifacename+".log")
+	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifacename)
 	out, err := m.cmd.CombinedOutput()
 	// if err != nil {
 	// 	fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,%v\n", m.Model, m.cmd, out, err)
@@ -182,8 +183,15 @@ func (m *M_qws) startQuectel() error {
 	}
 	fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,%v\n", m.Model, m.cmd, out, err)
 
-	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "-f", "/tmp/qws_"+m.ifacename+".log", "&")
+	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "&")
 	go func() {
+		stdout, err := os.OpenFile("/tmp/qws_"+m.ifacename+".log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if err != nil {
+			fmt.Printf("QWS %s os.OpenFile(/tmp/qws_%s.log)->%v\n", m.Model, m.ifacename, err)
+			return
+		}
+		defer stdout.Close()
+		m.cmd.Stdout, m.cmd.Stderr = stdout, stdout
 		err = m.cmd.Start()
 		fmt.Printf("QWS %s startQuectel() cmd.Start(%+v)->%+v\n", m.Model, m.cmd, err)
 		m.cmd.Wait()
