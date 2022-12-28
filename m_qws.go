@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type M_qws struct {
@@ -26,19 +28,25 @@ func (m *M_qws) GoString() string {
 }
 
 func (m *M_qws) Open() error {
-	// fmt.Println("M_qws Open")
+	return m.OpenWithLogger(nil)
+}
+func (m *M_qws) OpenWithLogger(logger *logrus.Logger) error {
+	if logger != nil {
+		m.l = logger
+	} else {
+		m.l = logrus.StandardLogger()
+	}
 	if err := json.Unmarshal(m.CfgJsonBytes, m); err != nil {
-		fmt.Printf("json.Unmarshal()->:%v\n", err)
+		m.l.Errorf("json.Unmarshal()->:%v", err)
 		return err
 	}
 	return nil
 }
 func (m *M_qws) run(wg *sync.WaitGroup) error {
-	fmt.Printf("QWS %s run\n", m.Model)
 OuterLop:
 	for {
 		if m.needstop {
-			fmt.Printf("QWS %s needstop\n", m.Model)
+			m.l.Info("needstop")
 			m.state = MSTAT_LOOP_STOP
 		}
 
@@ -50,95 +58,95 @@ OuterLop:
 			m.stopQuectel()
 			break OuterLop
 		case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
-			fmt.Println("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
+			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
 			if m.isIfaceNameChange() {
 				m.state = MSTAT_QWS_STOP_QUEDTEL
 			}
 		case MSTAT_QWS_STOP_QUEDTEL:
-			fmt.Println("MSTAT_QWS_STOP_QUEDTEL")
+			m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
 			if err := m.stopQuectel(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_QWS_START_QUEDTEL
 			}
 		case MSTAT_QWS_START_QUEDTEL:
-			fmt.Println("MSTAT_QWS_START_QUEDTEL")
+			m.l.Debug("MSTAT_QWS_START_QUEDTEL")
 			if err := m.startQuectel(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_CHECK_ATDEVPATH_CHANGE
 			}
 
 		case MSTAT_CHECK_ATDEVPATH_CHANGE:
-			fmt.Println("MSTAT_CHECK_ATDEVPATH_CHANGE")
+			m.l.Debug("MSTAT_CHECK_ATDEVPATH_CHANGE")
 			if m.isATdevPathChange() {
 				m.state = MSTAT_CLOSE_ATDEV
 			}
 		case MSTAT_CLOSE_ATDEV:
-			fmt.Println("MSTAT_CLOSE_ATDEV")
+			m.l.Debug("MSTAT_CLOSE_ATDEV")
 			if err := m.atClose(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_OPEN_ATDEV
 			}
 		case MSTAT_OPEN_ATDEV:
-			fmt.Println("MSTAT_OPEN_ATDEV")
+			m.l.Debug("MSTAT_OPEN_ATDEV")
 			if err := m.atOpen(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_NOECHO
 			}
 
 		case MSTAT_NOECHO:
-			fmt.Println("MSTAT_NOECHO")
+			m.l.Debug("MSTAT_NOECHO")
 			if err := m.atNoEcho(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_HOTPLUGDETECT
 			}
 		case MSTAT_HOTPLUGDETECT:
-			fmt.Println("MSTAT_HOTPLUGDETECT")
+			m.l.Debug("MSTAT_HOTPLUGDETECT")
 			if err := m.hotplugDetect(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_CHECK_SIMREADY
 			}
 		case MSTAT_CHECK_SIMREADY:
-			fmt.Println("MSTAT_CHECK_SIMREADY")
+			m.l.Debug("MSTAT_CHECK_SIMREADY")
 			if err := m.isSimReady(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_SOFTRESET
 			} else {
 				m.state = MSTAT_CHECK_REGISTRATIONM
 			}
 		case MSTAT_CHECK_REGISTRATIONM:
-			fmt.Println("MSTAT_CHECK_REGISTRATIONM")
+			m.l.Debug("MSTAT_CHECK_REGISTRATIONM")
 			if err := m.isRegistertion(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_SOFTRESET
 			} else {
 				m.state = MSTAT_LOOPING
 			}
 
 		case MSTAT_LOOPING:
-			fmt.Println("MSTAT_LOOPING")
+			m.l.Debug("MSTAT_LOOPING")
 			if err := m.atIsOK(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_SOFTRESET
 			} else {
 				m.state = MSTAT_LOOPING
 			}
 
 		case MSTAT_SOFTRESET:
-			fmt.Println("MSTAT_SOFTRESET")
+			m.l.Debug("MSTAT_SOFTRESET")
 			if err := m.atSoftReset(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 				m.state = MSTAT_HARDRESET
 			} else {
 				m.atdevpath = ""
@@ -148,54 +156,54 @@ OuterLop:
 				m.state = MSTAT_INIT
 			}
 		case MSTAT_HARDRESET:
-			fmt.Println("MSTAT_HARDRESET")
+			m.l.Debug("MSTAT_HARDRESET")
 			if err := m.hardReset(); err != nil {
-				fmt.Println(err)
+				m.l.Error(err)
 			} else {
 				m.state = MSTAT_INIT
 			}
 		}
 
 		time.Sleep(time.Second * 2)
-		fmt.Printf("QWS %s runing\n", m.Model)
+		m.l.Debug("runing")
 	}
 	wg.Done()
-	fmt.Printf("QWS %s Done\n", m.Model)
+	m.l.Info("Done")
 	return nil
 }
 
 func (m *M_qws) stopQuectel() error {
-	fmt.Printf("QWS %s stopQuectel\n", m.Model)
+	m.l.Debug("stopQuectel")
 	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifacename)
-	fmt.Println(m.cmd.Args)
-	m.cmd.Run()
+	err := m.cmd.Run()
+	m.l.Infof("cmd.Run(%+v)->%v", m.cmd, err)
 	return nil
 }
 func (m *M_qws) startQuectel() error {
 	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifacename)
 	out, err := m.cmd.CombinedOutput()
 	// if err != nil {
-	// 	fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,%v\n", m.Model, m.cmd, out, err)
+	// 	m.l.Debug("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
 	// }
 	if err == nil && len(out) != 0 {
-		fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,is already run\n", m.Model, m.cmd, out)
+		m.l.Warnf("cmd.Run(%+v)->%+v,is already run", m.cmd, out)
 		return nil
 	}
-	fmt.Printf("QWS %s startQuectel() cmd.Run(%+v)->%+v,%v\n", m.Model, m.cmd, out, err)
+	m.l.Debugf("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
 
 	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "&")
 	go func() {
 		stdout, err := os.OpenFile("/tmp/qws_"+m.ifacename+".log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 		if err != nil {
-			fmt.Printf("QWS %s os.OpenFile(/tmp/qws_%s.log)->%v\n", m.Model, m.ifacename, err)
+			m.l.Errorf("os.OpenFile(/tmp/qws_%s.log)->%v", m.ifacename, err)
 			return
 		}
 		defer stdout.Close()
 		m.cmd.Stdout, m.cmd.Stderr = stdout, stdout
 		err = m.cmd.Start()
-		fmt.Printf("QWS %s startQuectel() cmd.Start(%+v)->%+v\n", m.Model, m.cmd, err)
+		m.l.Infof("cmd.Start(%+v)->%+v", m.cmd, err)
 		m.cmd.Wait()
-		fmt.Println("go stop")
+		m.l.Info("go stop")
 	}()
 	return nil
 }
@@ -208,10 +216,10 @@ func (m *M_qws) hotplugDetect() error {
 		return err
 	}
 	if bytes.Contains(buf, []byte("OK")) {
-		fmt.Printf("QWS %s hotplugDetect()->ok\n", m.Model)
+		m.l.Infof("hotplugDetect()->ok")
 		return nil
 	}
-	fmt.Printf("QWS %s hotplugDetect()->Unknow [%q]\n", m.Model, buf[:n])
+	m.l.Warnf("hotplugDetect()->Unknow [%q]", buf[:n])
 	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 }
 
@@ -224,13 +232,13 @@ func (m *M_qws) isSimReady() error {
 			return err
 		}
 		if bytes.Contains(buf, []byte("READY")) { //\r\n+CPIN: READY\r\nOK\r\n
-			fmt.Printf("QWS %s isSimReady()->ok\n", m.Model)
+			m.l.Infof("isSimReady()->ok")
 			return nil
 		} else if bytes.Contains(buf, []byte("ERROR")) { //"\r\n+CME ERROR: 13\r\n" "\r\n+CME ERROR: 10\r\n"
-			fmt.Printf("QWS %s isSimReady()->ERROR,cnt%d\n", m.Model, i)
+			m.l.Warnf("isSimReady()->ERROR,cnt%d", i)
 			time.Sleep(time.Second * 3)
 		} else {
-			fmt.Printf("QWS %s isSimReady()->Unknow [%q]\n", m.Model, buf[:n])
+			m.l.Errorf("isSimReady()->Unknow [%q]", buf[:n])
 			return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 		}
 	}
@@ -246,10 +254,10 @@ func (m *M_qws) isRegistertion() error {
 			return err
 		}
 		if bytes.Contains(buf, []byte("CEREG: 0,1")) || bytes.Contains(buf, []byte("CEREG: 0,5")) { //\r\n+CEREG: 0,1\r\nOK\r\n  或者0,5
-			fmt.Printf("QWS %s isRegistertion()->ok\n", m.Model)
+			m.l.Infof("isRegistertion()->ok")
 			return nil
 		}
-		fmt.Printf("QWS %s isRegistertion()->no [%q],cnt%d\n", m.Model, buf[:n], i)
+		m.l.Infof("isRegistertion()->no [%q],cnt%d", buf[:n], i)
 		time.Sleep(time.Second * 3)
 	}
 	return errors.New("isNotRegistertion")
