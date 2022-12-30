@@ -246,21 +246,22 @@ func (m *M_qws) isSimReady() error {
 }
 
 func (m *M_qws) isRegistertion() error {
-	for i := 0; i < 10; i++ {
-		atcmd := []byte("at+cereg?\r\n")
-		buf := make([]byte, 128)
-		n, err := m.atWriteRead(atcmd, buf)
-		if err != nil {
-			return err
-		}
-		if bytes.Contains(buf, []byte("CEREG: 0,1")) || bytes.Contains(buf, []byte("CEREG: 0,5")) { //\r\n+CEREG: 0,1\r\nOK\r\n  或者0,5
-			m.l.Infof("isRegistertion()->ok")
-			return nil
-		}
-		m.l.Infof("isRegistertion()->no [%q],cnt%d", buf[:n], i)
-		time.Sleep(time.Second * 3)
-	}
-	return errors.New("isNotRegistertion")
+	return nil //TODO 暂未确定用哪个指令查
+	// for i := 0; i < 10; i++ {
+	// 	atcmd := []byte("at+cereg?\r\n")
+	// 	buf := make([]byte, 128)
+	// 	n, err := m.atWriteRead(atcmd, buf)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if bytes.Contains(buf, []byte("CEREG: 0,1")) || bytes.Contains(buf, []byte("CEREG: 0,5")) { //\r\n+CEREG: 0,1\r\nOK\r\n  或者0,5
+	// 		m.l.Infof("isRegistertion()->ok")
+	// 		return nil
+	// 	}
+	// 	m.l.Infof("isRegistertion()->no [%q],cnt%d", buf[:n], i)
+	// 	time.Sleep(time.Second * 3)
+	// }
+	// return errors.New("isNotRegistertion")
 }
 
 //TODO 读取信号
