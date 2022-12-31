@@ -76,10 +76,8 @@ func (m *Modem) Format(entry *logrus.Entry) ([]byte, error) {
 	} else {
 		b = entry.Buffer
 	}
-	formatTime := entry.Time.Format("20060102 15:04:05") //时间格式化
 	//设置格式
-	fmt.Fprintf(b, "%s %s %s:%d %s %s %s\n",
-		formatTime, entry.Level, path.Base(entry.Caller.File), entry.Caller.Line, m.Model, m.Name, entry.Message)
+	fmt.Fprintf(b, "%5s %s:%d %s %s %s\n", entry.Level, path.Base(entry.Caller.File), entry.Caller.Line, m.Model, m.Name, entry.Message)
 	// path.Base(entry.Caller.Function), m.Model, m.name, entry.Message)
 	return b.Bytes(), nil
 }
