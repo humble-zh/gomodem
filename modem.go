@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os/exec"
 	"path"
 	"strings"
@@ -59,6 +60,9 @@ type Modem struct {
 	ifacename     string
 	atdevpath     string
 	at            *serial.Port
+	IP            net.IP
+	IPMask        net.IPMask
+	GW            net.IP
 }
 
 func (m *Modem) String() string {
@@ -243,7 +247,7 @@ func (m *Modem) atIsOK() error {
 		return err
 	}
 	if bytes.Contains(buf, []byte("OK")) {
-		m.l.Info("atIsOK")
+		m.l.Debug("atIsOK")
 		return nil
 	}
 	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
@@ -262,6 +266,35 @@ func (m *Modem) isSimReady() error {
 func (m *Modem) isRegistertion() error {
 	m.l.Debug("isRegistertion")
 	return nil
+}
+
+func (m *Modem) isDialUp() error {
+	m.l.Debug("isDialUp")
+	data, err := ioutil.ReadFile("/tmp/" + m.ifacename + ".net")
+	if err != nil {
+		m.l.Error(err)
+		return err
+	}
+	ifaceNet := bytes.Split(bytes.Trim(data, "\n"), []byte(" "))
+	if len(ifaceNet) != 3 {
+		m.l.Tracef("ifaceNet:%+v", ifaceNet)
+		return errors.New("/tmp/" + m.ifacename + ".net invalid")
+	}
+	m.IP, m.IPMask, m.GW = ifaceNet[0], ifaceNet[1], ifaceNet[2]
+	m.l.Debugf("%+v %+v %+v", string(m.IP), string(m.IPMask), string(m.GW))
+
+	destIPs := []string{"223.5.5.5", "8.8.8.8"}
+	for _, destIP := range destIPs {
+		cmd := exec.Command("ping", destIP, "-I", m.ifacename, "-c", "1", "-W", "3")
+		err := cmd.Run() //只执行，不获取输出
+		if err != nil {  //ping失败
+			m.l.Errorf("cmd.Run(%+v)->%v", cmd, err)
+			continue
+		}
+		m.l.Infof("cmd.Run(%+v)->%v", cmd, err)
+		return nil
+	}
+	return errors.New("ping timeout")
 }
 
 func (m *Modem) loopStart() {

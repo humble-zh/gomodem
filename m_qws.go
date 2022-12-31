@@ -45,6 +45,7 @@ func (m *M_qws) OpenWithLogger(logger *logrus.Logger) error {
 func (m *M_qws) run(wg *sync.WaitGroup) error {
 OuterLop:
 	for {
+		delayTime := time.Second
 		if m.needstop {
 			m.l.Info("needstop")
 			m.state = MSTAT_LOOP_STOP
@@ -139,9 +140,18 @@ OuterLop:
 			if err := m.atIsOK(); err != nil {
 				m.l.Error(err)
 				m.state = MSTAT_SOFTRESET
-			} else {
-				m.state = MSTAT_LOOPING
+				break
 			}
+			if err := m.isDialUp(); err != nil {
+				m.l.Error(err)
+				m.atdevpath = ""
+				m.ifacename = ""
+				m.atClose()
+				m.stopQuectel()
+				m.state = MSTAT_INIT
+				break
+			}
+			delayTime = time.Second * 5
 
 		case MSTAT_SOFTRESET:
 			m.l.Debug("MSTAT_SOFTRESET")
@@ -164,7 +174,7 @@ OuterLop:
 			}
 		}
 
-		time.Sleep(time.Second * 2)
+		time.Sleep(delayTime)
 		m.l.Debug("runing")
 	}
 	wg.Done()
@@ -193,9 +203,13 @@ func (m *M_qws) startQuectel() error {
 
 	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "&")
 	go func() {
-		stdout, err := os.OpenFile("/tmp/qws_"+m.ifacename+".log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		err := os.MkdirAll("/tmp/qws", os.ModePerm)
 		if err != nil {
-			m.l.Errorf("os.OpenFile(/tmp/qws_%s.log)->%v", m.ifacename, err)
+			logrus.Error(err)
+		}
+		stdout, err := os.OpenFile("/tmp/qws/"+m.ifacename+".log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if err != nil {
+			m.l.Errorf("os.OpenFile(/tmp/qws/%s.log)->%v", m.ifacename, err)
 			return
 		}
 		defer stdout.Close()
