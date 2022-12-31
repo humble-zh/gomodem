@@ -322,9 +322,9 @@ func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
 	}
 	switch rm.Model {
 	case "ep06":
-		return &M_qws_ep06{M_qws{rm, "", nil}}, nil
+		return &M_qws_ep06{M_qws{Modem: rm}}, nil
 	case "rm500q":
-		return &M_qws_rm500q{M_qws{rm, "", nil}}, nil
+		return &M_qws_rm500q{M_qws{Modem: rm}}, nil
 	default:
 		panic("Unknow supported Model" + rm.Model)
 	}

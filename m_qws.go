@@ -17,6 +17,7 @@ type M_qws struct {
 	Modem
 	Quectel string `json:"quectel"`
 	cmd     *exec.Cmd
+	wg      sync.WaitGroup
 }
 
 func (m *M_qws) String() string {
@@ -144,10 +145,10 @@ OuterLop:
 			}
 			if err := m.isDialUp(); err != nil {
 				m.l.Error(err)
-				m.atdevpath = ""
-				m.ifacename = ""
 				m.atClose()
 				m.stopQuectel()
+				m.atdevpath = ""
+				m.ifacename = ""
 				m.state = MSTAT_INIT
 				break
 			}
@@ -159,10 +160,10 @@ OuterLop:
 				m.l.Error(err)
 				m.state = MSTAT_HARDRESET
 			} else {
-				m.atdevpath = ""
-				m.ifacename = ""
 				m.atClose()
 				m.stopQuectel()
+				m.atdevpath = ""
+				m.ifacename = ""
 				m.state = MSTAT_INIT
 			}
 		case MSTAT_HARDRESET:
@@ -187,6 +188,7 @@ func (m *M_qws) stopQuectel() error {
 	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifacename)
 	err := m.cmd.Run()
 	m.l.Infof("cmd.Run(%+v)->%v", m.cmd, err)
+	m.wg.Wait()
 	return nil
 }
 func (m *M_qws) startQuectel() error {
@@ -203,6 +205,8 @@ func (m *M_qws) startQuectel() error {
 
 	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "&")
 	go func() {
+		m.wg.Add(1)
+		defer m.wg.Done()
 		err := os.MkdirAll("/tmp/qws", os.ModePerm)
 		if err != nil {
 			logrus.Error(err)
