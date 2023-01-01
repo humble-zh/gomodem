@@ -22,6 +22,7 @@ type IModem interface {
 	Open() error
 	OpenWithLogger(logger *logrus.Logger) error
 	Close() error
+	ToJson() string
 	run(wg *sync.WaitGroup) error
 	loopStart()
 	loopStop()
@@ -55,14 +56,14 @@ type Modem struct {
 	FindATdevPath string `json:"findatdevpath"`
 	Name          string `json:"name"`
 	l             *logrus.Logger
-	needstop      bool
+	needStop      bool
 	state         MState
-	ifacename     string
-	atdevpath     string
+	ifaceName     string
+	atDevPath     string
 	at            *serial.Port
-	IP            net.IP
-	IPMask        net.IPMask
-	GW            net.IP
+	ip            net.IP
+	ipMask        net.IPMask
+	gw            net.IP
 }
 
 func (m *Modem) String() string {
@@ -71,6 +72,13 @@ func (m *Modem) String() string {
 }
 func (m *Modem) GoString() string {
 	return m.String()
+}
+func (m *Modem) ToJson() string {
+	return "{\"iface\":\"" + m.ifaceName +
+		"\",\"ip\":\"" + string(m.ip) +
+		"\",\"ipMask\":\"" + string(m.ipMask) +
+		"\",\"gw\":\"" + string(m.gw) +
+		"\"}"
 }
 
 func (m *Modem) Format(entry *logrus.Entry) ([]byte, error) {
@@ -109,8 +117,8 @@ func (m *Modem) Close() error {
 func (m *Modem) Run(wg *sync.WaitGroup) error {
 	m.l.Debug("run")
 	for {
-		if m.needstop {
-			m.l.Info("needstop")
+		if m.needStop {
+			m.l.Info("needStop")
 			break
 		}
 		time.Sleep(time.Second * 2)
@@ -130,9 +138,9 @@ func (m *Modem) isIfaceNameChange() bool {
 	err := cmd.Run()
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
 	m.l.Debugf("isIfaceNameChange cmd.Run(%+v)->%v,%s,%s", cmd, err, outStr, errStr)
-	if strings.Compare(m.ifacename, outStr) != 0 {
-		m.l.Infof("iface:'%s'->'%s'", m.ifacename, outStr)
-		m.ifacename = outStr
+	if strings.Compare(m.ifaceName, outStr) != 0 {
+		m.l.Infof("iface:'%s'->'%s'", m.ifaceName, outStr)
+		m.ifaceName = outStr
 		return true
 	}
 	return false
@@ -148,9 +156,9 @@ func (m *Modem) isATdevPathChange() bool {
 	err := cmd.Run()
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
 	m.l.Debugf("isATdevPathChange cmd.Run(%+v)->%v,%s,%s", cmd, err, outStr, errStr)
-	if strings.Compare(m.atdevpath, outStr) != 0 {
-		m.l.Infof("atdevpath:'%s'->'%s'", m.atdevpath, outStr)
-		m.atdevpath = outStr
+	if strings.Compare(m.atDevPath, outStr) != 0 {
+		m.l.Infof("atDevPath:'%s'->'%s'", m.atDevPath, outStr)
+		m.atDevPath = outStr
 		return true
 	}
 	return false
@@ -167,7 +175,7 @@ func (m *Modem) atClose() error {
 	return nil
 }
 func (m *Modem) atOpen() error {
-	c := &serial.Config{Name: m.atdevpath, Baud: 115200 /*, ReadTimeout: time.Second * 10*/}
+	c := &serial.Config{Name: m.atDevPath, Baud: 115200 /*, ReadTimeout: time.Second * 10*/}
 	at, err := serial.OpenPort(c)
 	if err != nil {
 		m.l.Errorf("serial.OpenPort(%+v)->%+v", c, err)
@@ -270,7 +278,7 @@ func (m *Modem) isRegistertion() error {
 
 func (m *Modem) isDialUp() error {
 	m.l.Debug("isDialUp")
-	data, err := ioutil.ReadFile("/tmp/" + m.ifacename + ".net")
+	data, err := ioutil.ReadFile("/tmp/" + m.ifaceName + ".net")
 	if err != nil {
 		m.l.Error(err)
 		return err
@@ -278,14 +286,14 @@ func (m *Modem) isDialUp() error {
 	ifaceNet := bytes.Split(bytes.Trim(data, "\n"), []byte(" "))
 	if len(ifaceNet) != 3 {
 		m.l.Tracef("ifaceNet:%+v", ifaceNet)
-		return errors.New("/tmp/" + m.ifacename + ".net invalid")
+		return errors.New("/tmp/" + m.ifaceName + ".net invalid")
 	}
-	m.IP, m.IPMask, m.GW = ifaceNet[0], ifaceNet[1], ifaceNet[2]
-	m.l.Debugf("%+v %+v %+v", string(m.IP), string(m.IPMask), string(m.GW))
+	m.ip, m.ipMask, m.gw = ifaceNet[0], ifaceNet[1], ifaceNet[2]
+	m.l.Debugf("%+v %+v %+v", string(m.ip), string(m.ipMask), string(m.gw))
 
 	destIPs := []string{"223.5.5.5", "8.8.8.8"}
 	for _, destIP := range destIPs {
-		cmd := exec.Command("ping", destIP, "-I", m.ifacename, "-c", "1", "-W", "3")
+		cmd := exec.Command("ping", destIP, "-I", m.ifaceName, "-c", "1", "-W", "3")
 		err := cmd.Run() //只执行，不获取输出
 		if err != nil {  //ping失败
 			m.l.Errorf("cmd.Run(%+v)->%v", cmd, err)
@@ -294,16 +302,21 @@ func (m *Modem) isDialUp() error {
 		m.l.Infof("cmd.Run(%+v)->%v", cmd, err)
 		return nil
 	}
+	m.ip, m.ipMask, m.gw = nil, nil, nil
+	if err = ioutil.WriteFile("/tmp/"+m.ifaceName+".net", []byte{}, 0644); err != nil {
+		m.l.Error(err)
+		return err
+	}
 	return errors.New("ping timeout")
 }
 
 func (m *Modem) loopStart() {
 	m.l.Debug("Loop starting")
-	m.needstop = false
+	m.needStop = false
 }
 func (m *Modem) loopStop() {
 	m.l.Debug("Loop stoping")
-	m.needstop = true
+	m.needStop = true
 }
 func Start(m IModem, wg *sync.WaitGroup) {
 	m.loopStart()
@@ -314,19 +327,18 @@ func Stop(m IModem) {
 }
 
 func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
-	// fmt.Println(string(jsonbytes))
-	rm := Modem{CfgJsonBytes: jsonbytes}
-	if err := json.Unmarshal(jsonbytes, &rm); err != nil {
+	raw := Modem{CfgJsonBytes: jsonbytes}
+	if err := json.Unmarshal(jsonbytes, &raw); err != nil {
 		fmt.Printf("json.Unmarshal()->:%v\n", err)
 		return nil, err
 	}
-	switch rm.Model {
+	switch raw.Model {
 	case "ep06":
-		return &M_qws_ep06{M_qws{Modem: rm}}, nil
+		return &M_qws_ep06{M_qws{Modem: raw}}, nil
 	case "rm500q":
-		return &M_qws_rm500q{M_qws{Modem: rm}}, nil
+		return &M_qws_rm500q{M_qws{Modem: raw}}, nil
 	default:
-		panic("Unknow supported Model" + rm.Model)
+		panic("Unknow supported Model" + raw.Model)
 	}
 }
 

@@ -46,18 +46,18 @@ func (m *M_qws) OpenWithLogger(logger *logrus.Logger) error {
 func (m *M_qws) run(wg *sync.WaitGroup) error {
 OuterLop:
 	for {
-		delayTime := time.Second
-		if m.needstop {
-			m.l.Info("needstop")
+		delayTime := time.Millisecond * 500
+		if m.needStop {
+			m.l.Info("needStop")
 			m.state = MSTAT_LOOP_STOP
 		}
 
 		switch m.state {
 		case MSTAT_LOOP_STOP:
-			m.atdevpath = ""
-			m.ifacename = ""
 			m.atClose()
 			m.stopQuectel()
+			m.atDevPath = ""
+			m.ifaceName = ""
 			break OuterLop
 		case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
 			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
@@ -147,8 +147,8 @@ OuterLop:
 				m.l.Error(err)
 				m.atClose()
 				m.stopQuectel()
-				m.atdevpath = ""
-				m.ifacename = ""
+				m.atDevPath = ""
+				m.ifaceName = ""
 				m.state = MSTAT_INIT
 				break
 			}
@@ -162,8 +162,8 @@ OuterLop:
 			} else {
 				m.atClose()
 				m.stopQuectel()
-				m.atdevpath = ""
-				m.ifacename = ""
+				m.atDevPath = ""
+				m.ifaceName = ""
 				m.state = MSTAT_INIT
 			}
 		case MSTAT_HARDRESET:
@@ -185,14 +185,14 @@ OuterLop:
 
 func (m *M_qws) stopQuectel() error {
 	m.l.Debug("stopQuectel")
-	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifacename)
+	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifaceName)
 	err := m.cmd.Run()
 	m.l.Infof("cmd.Run(%+v)->%v", m.cmd, err)
 	m.wg.Wait()
 	return nil
 }
 func (m *M_qws) startQuectel() error {
-	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifacename)
+	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifaceName)
 	out, err := m.cmd.CombinedOutput()
 	// if err != nil {
 	// 	m.l.Debug("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
@@ -203,7 +203,7 @@ func (m *M_qws) startQuectel() error {
 	}
 	m.l.Debugf("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
 
-	m.cmd = exec.Command(m.Quectel, "-i", m.ifacename, "&")
+	m.cmd = exec.Command(m.Quectel, "-i", m.ifaceName, "&")
 	go func() {
 		m.wg.Add(1)
 		defer m.wg.Done()
@@ -211,9 +211,9 @@ func (m *M_qws) startQuectel() error {
 		if err != nil {
 			logrus.Error(err)
 		}
-		stdout, err := os.OpenFile("/tmp/qws/"+m.ifacename+".log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		stdout, err := os.OpenFile("/tmp/qws/"+m.ifaceName+".log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 		if err != nil {
-			m.l.Errorf("os.OpenFile(/tmp/qws/%s.log)->%v", m.ifacename, err)
+			m.l.Errorf("os.OpenFile(/tmp/qws/%s.log)->%v", m.ifaceName, err)
 			return
 		}
 		defer stdout.Close()
