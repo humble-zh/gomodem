@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"sync"
@@ -130,6 +132,22 @@ OuterLop:
 		case MSTAT_CHECK_REGISTRATIONM:
 			m.l.Debug("MSTAT_CHECK_REGISTRATIONM")
 			if err := m.isRegistertion(); err != nil {
+				m.l.Error(err)
+				m.state = MSTAT_SOFTRESET
+			} else {
+				m.state = MSTAT_CHECK_IP
+			}
+		case MSTAT_CHECK_IP:
+			m.l.Debug("MSTAT_CHECK_IP")
+			if err := m.hasIP(); err != nil {
+				m.l.Error(err)
+				m.state = MSTAT_SOFTRESET
+			} else {
+				m.state = MSTAT_CHECK_GATEWAY
+			}
+		case MSTAT_CHECK_GATEWAY:
+			m.l.Debug("MSTAT_CHECK_GATEWAY")
+			if err := m.hasGateway(); err != nil {
 				m.l.Error(err)
 				m.state = MSTAT_SOFTRESET
 			} else {
@@ -280,6 +298,29 @@ func (m *M_qws) isRegistertion() error {
 	// 	time.Sleep(time.Second * 3)
 	// }
 	// return errors.New("isNotRegistertion")
+}
+
+func (m *M_qws) hasGateway() error {
+	m.gw = nil
+	var reterr error
+	for i := 0; i < 10; i++ {
+		data, err := ioutil.ReadFile("/tmp/qws/" + m.ifaceName + ".gw")
+		if err != nil {
+			m.l.Error(err)
+			reterr = err
+			time.Sleep(time.Second)
+			continue
+		}
+		gwBS := bytes.Trim(data, "\n")
+		if gw := net.ParseIP(string(gwBS)); gw.To4() != nil {
+			m.gw = gw
+			m.l.Infof("hasGateway(%+v)->ok", m.gw)
+			return nil
+		} else {
+			reterr = errors.New("no gateway found")
+		}
+	}
+	return reterr
 }
 
 //TODO 读取信号

@@ -43,6 +43,8 @@ const (
 	MSTAT_HOTPLUGDETECT
 	MSTAT_CHECK_SIMREADY
 	MSTAT_CHECK_REGISTRATIONM
+	MSTAT_CHECK_IP
+	MSTAT_CHECK_GATEWAY
 	MSTAT_LOOPING
 	MSTAT_SOFTRESET
 	MSTAT_HARDRESET
@@ -61,8 +63,7 @@ type Modem struct {
 	ifaceName     string
 	atDevPath     string
 	at            *serial.Port
-	ip            net.IP
-	ipMask        net.IPMask
+	ips           []net.IP
 	gw            net.IP
 }
 
@@ -74,10 +75,19 @@ func (m *Modem) GoString() string {
 	return m.String()
 }
 func (m *Modem) ToJson() string {
-	return "{\"iface\":\"" + m.ifaceName +
-		"\",\"ip\":\"" + string(m.ip) +
-		"\",\"ipMask\":\"" + string(m.ipMask) +
-		"\",\"gw\":\"" + string(m.gw) +
+	var ipSS []string
+	for _, ip := range m.ips {
+		if ip.To4() != nil {
+			ipSS = append(ipSS, "\""+ip.String()+"\"")
+		}
+	}
+	var gwStr string
+	if m.gw.To4() != nil {
+		gwStr = m.gw.String()
+	}
+	return "{\"iface\":\"" + m.ifaceName + "\"," +
+		"\"ips\":[" + strings.Join(ipSS, ",") + "]," +
+		"\"gw\":\"" + gwStr +
 		"\"}"
 }
 
@@ -276,38 +286,60 @@ func (m *Modem) isRegistertion() error {
 	return nil
 }
 
+func (m *Modem) hasIP() error {
+	var reterr error
+	for i := 0; i < 10; i++ {
+		iface, err := net.InterfaceByName(m.ifaceName)
+		if err != nil {
+			m.l.Error(err)
+			reterr = err
+			time.Sleep(time.Second)
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			m.l.Error(err)
+			reterr = err
+			time.Sleep(time.Second)
+			continue
+		}
+		m.ips = nil
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+				m.ips = append(m.ips, ipnet.IP)
+				// m.l.Infof("append(%+v)->ok", ipnet.IP.String())
+			}
+		}
+		if len(m.ips) > 0 {
+			m.l.Infof("hasIP(%+v)->ok", m.ips)
+			return nil
+		}
+		reterr = errors.New("no ip found")
+		time.Sleep(time.Second)
+	}
+	return reterr
+}
+
+func (m *Modem) hasGateway() error {
+	return errors.New("Function Not implementated")
+}
+
 func (m *Modem) isDialUp() error {
 	m.l.Debug("isDialUp")
-	data, err := ioutil.ReadFile("/tmp/" + m.ifaceName + ".net")
-	if err != nil {
-		m.l.Error(err)
-		return err
-	}
-	ifaceNet := bytes.Split(bytes.Trim(data, "\n"), []byte(" "))
-	if len(ifaceNet) != 3 {
-		m.l.Tracef("ifaceNet:%+v", ifaceNet)
-		return errors.New("/tmp/" + m.ifaceName + ".net invalid")
-	}
-	m.ip, m.ipMask, m.gw = ifaceNet[0], ifaceNet[1], ifaceNet[2]
-	m.l.Debugf("%+v %+v %+v", string(m.ip), string(m.ipMask), string(m.gw))
-
 	destIPs := []string{"223.5.5.5", "8.8.8.8"}
+	var err error
 	for _, destIP := range destIPs {
 		cmd := exec.Command("ping", destIP, "-I", m.ifaceName, "-c", "1", "-W", "3")
-		err := cmd.Run() //只执行，不获取输出
-		if err != nil {  //ping失败
+		err = cmd.Run() //只执行，不获取输出
+		if err != nil { //ping失败
 			m.l.Errorf("cmd.Run(%+v)->%v", cmd, err)
 			continue
 		}
 		m.l.Infof("cmd.Run(%+v)->%v", cmd, err)
 		return nil
 	}
-	m.ip, m.ipMask, m.gw = nil, nil, nil
-	if err = ioutil.WriteFile("/tmp/"+m.ifaceName+".net", []byte{}, 0644); err != nil {
-		m.l.Error(err)
-		return err
-	}
-	return errors.New("ping timeout")
+	m.ips, m.gw = nil, nil
+	return err
 }
 
 func (m *Modem) loopStart() {
