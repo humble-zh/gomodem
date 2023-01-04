@@ -53,10 +53,11 @@ const (
 
 type Modem struct {
 	CfgJsonBytes  []byte
-	Model         string `json:"model"`
-	FindIfaceName string `json:"findifacename"`
-	FindATdevPath string `json:"findatdevpath"`
-	Name          string `json:"name"`
+	Model         string   `json:"model"`
+	FindIfaceName string   `json:"findifacename"`
+	FindATdevPath string   `json:"findatdevpath"`
+	Name          string   `json:"name"`
+	PingTargets   []string `json:"pingTargets"`
 	l             *logrus.Logger
 	needStop      bool
 	state         MState
@@ -99,8 +100,7 @@ func (m *Modem) Format(entry *logrus.Entry) ([]byte, error) {
 		b = entry.Buffer
 	}
 	//设置格式
-	fmt.Fprintf(b, "%5s %s:%d %s %s %s\n", entry.Level, path.Base(entry.Caller.File), entry.Caller.Line, m.Model, m.Name, entry.Message)
-	// path.Base(entry.Caller.Function), m.Model, m.name, entry.Message)
+	fmt.Fprintf(b, "%5s %s:%4d %s %s %s() %s\n", entry.Level, path.Base(entry.Caller.File), entry.Caller.Line, m.Name, m.Model, path.Ext(entry.Caller.Function), entry.Message)
 	return b.Bytes(), nil
 }
 
@@ -120,12 +120,12 @@ func (m *Modem) OpenWithLogger(logger *logrus.Logger) error {
 	return nil
 }
 func (m *Modem) Close() error {
-	// m.l.Info("Close")
+	// m.l.Info("ok")
 	return nil
 }
 
-func (m *Modem) Run(wg *sync.WaitGroup) error {
-	m.l.Debug("run")
+func (m *Modem) run(wg *sync.WaitGroup) error {
+	defer wg.Done()
 	for {
 		if m.needStop {
 			m.l.Info("needStop")
@@ -134,7 +134,6 @@ func (m *Modem) Run(wg *sync.WaitGroup) error {
 		time.Sleep(time.Second * 2)
 		m.l.Info("runing")
 	}
-	wg.Done()
 	m.l.Info("Done")
 	return nil
 }
@@ -147,11 +146,14 @@ func (m *Modem) isIfaceNameChange() bool {
 	cmd.Stderr = &stderr // 标准错误
 	err := cmd.Run()
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
-	m.l.Debugf("isIfaceNameChange cmd.Run(%+v)->%v,%s,%s", cmd, err, outStr, errStr)
-	if strings.Compare(m.ifaceName, outStr) != 0 {
-		m.l.Infof("iface:'%s'->'%s'", m.ifaceName, outStr)
+	m.l.Debugf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
+	if m.ifaceName != outStr {
+		m.l.Infof("iface:%q->%q", m.ifaceName, outStr)
 		m.ifaceName = outStr
 		return true
+	}
+	if len(outStr) == 0 {
+		m.l.Errorf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
 	}
 	return false
 }
@@ -165,23 +167,26 @@ func (m *Modem) isATdevPathChange() bool {
 	cmd.Stderr = &stderr // 标准错误
 	err := cmd.Run()
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
-	m.l.Debugf("isATdevPathChange cmd.Run(%+v)->%v,%s,%s", cmd, err, outStr, errStr)
-	if strings.Compare(m.atDevPath, outStr) != 0 {
-		m.l.Infof("atDevPath:'%s'->'%s'", m.atDevPath, outStr)
+	m.l.Debugf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
+	if m.atDevPath != outStr {
+		m.l.Infof("%q->%q", m.atDevPath, outStr)
 		m.atDevPath = outStr
 		return true
+	}
+	if len(outStr) == 0 {
+		m.l.Errorf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
 	}
 	return false
 }
 func (m *Modem) atClose() error {
-	m.l.Debug("atClose")
 	if m.at != nil {
 		if err := m.at.Close(); err != nil {
-			m.l.Errorf("m.at.Close()->%v", err)
+			m.l.Error(err)
 			return err
 		}
 		m.at = nil
 	}
+	m.l.Info("ok")
 	return nil
 }
 func (m *Modem) atOpen() error {
@@ -192,6 +197,7 @@ func (m *Modem) atOpen() error {
 		return err
 	}
 	m.at = at
+	m.l.Info("ok")
 	return nil
 }
 func (m *Modem) atWriteReadTimeout(wr []byte, rd []byte, t time.Duration) (int, error) {
@@ -224,13 +230,12 @@ func (m *Modem) atNoEcho() error {
 		return err
 	}
 	if bytes.Contains(buf, []byte("OK")) {
-		m.l.Info("atNoEcho()->ok")
+		m.l.Info("ok")
 		return nil
 	}
 	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 }
 func (m *Modem) atSoftReset() error {
-	m.l.Debug("softreset")
 	atcmdcfun0 := []byte("at+cfun=0\r\n")
 	bufcfun0 := make([]byte, 128)
 	n, err := m.atWriteRead(atcmdcfun0, bufcfun0)
@@ -248,13 +253,13 @@ func (m *Modem) atSoftReset() error {
 		return err
 	}
 	if bytes.Contains(bufcfun1, []byte("OK")) {
+		m.l.Info("ok")
 		return nil
 	}
 	return errors.New("Unknow " + fmt.Sprintf("%q", bufcfun1[:n]))
 }
 func (m *Modem) hardReset() error {
-	m.l.Debug("hardreset doNothing")
-	return nil
+	return errors.New("Function Not implementated")
 }
 
 func (m *Modem) atIsOK() error {
@@ -265,25 +270,22 @@ func (m *Modem) atIsOK() error {
 		return err
 	}
 	if bytes.Contains(buf, []byte("OK")) {
-		m.l.Debug("atIsOK")
+		m.l.Debug("ok")
 		return nil
 	}
 	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 }
 
 func (m *Modem) hotplugDetect() error {
-	m.l.Debug("hotplugDetect")
-	return nil
+	return errors.New("Function Not implementated")
 }
 
 func (m *Modem) isSimReady() error {
-	m.l.Debug("isSimReady")
-	return nil
+	return errors.New("Function Not implementated")
 }
 
 func (m *Modem) isRegistertion() error {
-	m.l.Debug("isRegistertion")
-	return nil
+	return errors.New("Function Not implementated")
 }
 
 func (m *Modem) hasIP() error {
@@ -311,7 +313,7 @@ func (m *Modem) hasIP() error {
 			}
 		}
 		if len(m.ips) > 0 {
-			m.l.Infof("hasIP(%+v)->ok", m.ips)
+			m.l.Infof("%+v ok", m.ips)
 			return nil
 		}
 		reterr = errors.New("no ip found")
@@ -325,17 +327,15 @@ func (m *Modem) hasGateway() error {
 }
 
 func (m *Modem) isDialUp() error {
-	m.l.Debug("isDialUp")
-	destIPs := []string{"223.5.5.5", "8.8.8.8"}
 	var err error
-	for _, destIP := range destIPs {
+	for _, destIP := range m.PingTargets {
 		cmd := exec.Command("ping", destIP, "-I", m.ifaceName, "-c", "1", "-W", "3")
 		err = cmd.Run() //只执行，不获取输出
 		if err != nil { //ping失败
 			m.l.Errorf("cmd.Run(%+v)->%v", cmd, err)
 			continue
 		}
-		m.l.Infof("cmd.Run(%+v)->%v", cmd, err)
+		m.l.Infof("cmd.Run(%+v)->ok", cmd)
 		return nil
 	}
 	m.ips, m.gw = nil, nil
@@ -343,11 +343,11 @@ func (m *Modem) isDialUp() error {
 }
 
 func (m *Modem) loopStart() {
-	m.l.Debug("Loop starting")
+	m.l.Info("ok")
 	m.needStop = false
 }
 func (m *Modem) loopStop() {
-	m.l.Debug("Loop stoping")
+	m.l.Info("ok")
 	m.needStop = true
 }
 func Start(m IModem, wg *sync.WaitGroup) {
@@ -361,7 +361,7 @@ func Stop(m IModem) {
 func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
 	raw := Modem{CfgJsonBytes: jsonbytes}
 	if err := json.Unmarshal(jsonbytes, &raw); err != nil {
-		fmt.Printf("json.Unmarshal()->:%v\n", err)
+		logrus.Errorf("json.Unmarshal()->:%v", err)
 		return nil, err
 	}
 	switch raw.Model {
@@ -375,10 +375,9 @@ func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
 }
 
 func NewWithJsonFile(jsonfile string) (IModem, error) {
-	fmt.Println(jsonfile)
 	jsonbytes, err := ioutil.ReadFile(jsonfile)
 	if err != nil {
-		fmt.Printf("ioutil.ReadFile()->:%v\n", err)
+		logrus.Errorf("ioutil.ReadFile()->:%v", err)
 		return nil, err
 	}
 	return NewWithJsonBytes(jsonbytes)

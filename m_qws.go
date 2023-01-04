@@ -17,9 +17,10 @@ import (
 
 type M_qws struct {
 	Modem
-	Quectel string `json:"quectel"`
-	cmd     *exec.Cmd
-	wg      sync.WaitGroup
+	Quectel    string `json:"quectel"`
+	cmd        *exec.Cmd
+	checkCount uint8
+	wg         sync.WaitGroup
 }
 
 func (m *M_qws) String() string {
@@ -46,6 +47,7 @@ func (m *M_qws) OpenWithLogger(logger *logrus.Logger) error {
 	return nil
 }
 func (m *M_qws) run(wg *sync.WaitGroup) error {
+	defer wg.Done()
 OuterLop:
 	for {
 		delayTime := time.Millisecond * 500
@@ -120,37 +122,62 @@ OuterLop:
 				m.state = MSTAT_INIT
 			} else {
 				m.state = MSTAT_CHECK_SIMREADY
+				m.checkCount = 0
 			}
 		case MSTAT_CHECK_SIMREADY:
 			m.l.Debug("MSTAT_CHECK_SIMREADY")
 			if err := m.isSimReady(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_SOFTRESET
+				if m.checkCount > 10 {
+					m.checkCount = 0
+					m.l.Error(err)
+					m.state = MSTAT_SOFTRESET
+				}
+				m.checkCount++
+				delayTime = time.Second * 2
 			} else {
+				m.checkCount = 0
 				m.state = MSTAT_CHECK_REGISTRATIONM
 			}
 		case MSTAT_CHECK_REGISTRATIONM:
 			m.l.Debug("MSTAT_CHECK_REGISTRATIONM")
 			if err := m.isRegistertion(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_SOFTRESET
+				if m.checkCount > 10 {
+					m.checkCount = 0
+					m.l.Error(err)
+					m.state = MSTAT_SOFTRESET
+				}
+				m.checkCount++
+				delayTime = time.Second * 2
 			} else {
+				m.checkCount = 0
 				m.state = MSTAT_CHECK_IP
 			}
 		case MSTAT_CHECK_IP:
 			m.l.Debug("MSTAT_CHECK_IP")
 			if err := m.hasIP(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_SOFTRESET
+				if m.checkCount > 10 {
+					m.checkCount = 0
+					m.l.Error(err)
+					m.state = MSTAT_SOFTRESET
+				}
+				m.checkCount++
+				delayTime = time.Second * 2
 			} else {
+				m.checkCount = 0
 				m.state = MSTAT_CHECK_GATEWAY
 			}
 		case MSTAT_CHECK_GATEWAY:
 			m.l.Debug("MSTAT_CHECK_GATEWAY")
 			if err := m.hasGateway(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_SOFTRESET
+				if m.checkCount > 10 {
+					m.checkCount = 0
+					m.l.Error(err)
+					m.state = MSTAT_SOFTRESET
+				}
+				m.checkCount++
+				delayTime = time.Second * 2
 			} else {
+				m.checkCount = 0
 				m.state = MSTAT_LOOPING
 			}
 
@@ -196,13 +223,11 @@ OuterLop:
 		time.Sleep(delayTime)
 		m.l.Debug("runing")
 	}
-	wg.Done()
 	m.l.Info("Done")
 	return nil
 }
 
 func (m *M_qws) stopQuectel() error {
-	m.l.Debug("stopQuectel")
 	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifaceName)
 	err := m.cmd.Run()
 	m.l.Infof("cmd.Run(%+v)->%v", m.cmd, err)
@@ -213,18 +238,19 @@ func (m *M_qws) startQuectel() error {
 	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifaceName)
 	out, err := m.cmd.CombinedOutput()
 	// if err != nil {
-	// 	m.l.Debug("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
+	// 	m.l.Debugf("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
 	// }
 	if err == nil && len(out) != 0 {
 		m.l.Warnf("cmd.Run(%+v)->%+v,is already run", m.cmd, out)
 		return nil
 	}
-	m.l.Debugf("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
+	m.l.Infof("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
 
 	m.cmd = exec.Command(m.Quectel, "-i", m.ifaceName, "&")
 	go func() {
 		m.wg.Add(1)
 		defer m.wg.Done()
+		m.l.Info("go quectel start")
 		err := os.MkdirAll("/tmp/qws", os.ModePerm)
 		if err != nil {
 			logrus.Error(err)
@@ -239,51 +265,47 @@ func (m *M_qws) startQuectel() error {
 		err = m.cmd.Start()
 		m.l.Infof("cmd.Start(%+v)->%+v", m.cmd, err)
 		m.cmd.Wait()
-		m.l.Info("go stop")
+		m.l.Info("go quectel stop")
 	}()
 	return nil
 }
 
 func (m *M_qws) hotplugDetect() error {
-	atcmd := []byte("at+qsimdet=1,1\r\n")
+	atcmd := []byte("at+qsimdet=1,0\r\n")
 	buf := make([]byte, 128)
 	n, err := m.atWriteRead(atcmd, buf)
 	if err != nil {
 		return err
 	}
 	if bytes.Contains(buf, []byte("OK")) {
-		m.l.Infof("hotplugDetect()->ok")
+		m.l.Infof("ok")
 		return nil
 	}
-	m.l.Warnf("hotplugDetect()->Unknow [%q]", buf[:n])
+	m.l.Warnf("Unknow [%q]", buf[:n])
 	return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 }
 
 func (m *M_qws) isSimReady() error {
-	for i := 0; i < 10; i++ {
-		atcmd := []byte("at+cpin?\r\n")
-		buf := make([]byte, 128)
-		n, err := m.atWriteRead(atcmd, buf)
-		if err != nil {
-			return err
-		}
-		if bytes.Contains(buf, []byte("READY")) { //\r\n+CPIN: READY\r\nOK\r\n
-			m.l.Infof("isSimReady()->ok")
-			return nil
-		} else if bytes.Contains(buf, []byte("ERROR")) { //"\r\n+CME ERROR: 13\r\n" "\r\n+CME ERROR: 10\r\n"
-			m.l.Warnf("isSimReady()->ERROR,cnt%d", i)
-			time.Sleep(time.Second * 3)
-		} else {
-			m.l.Errorf("isSimReady()->Unknow [%q]", buf[:n])
-			return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
-		}
+	atcmd := []byte("at+cpin?\r\n")
+	buf := make([]byte, 128)
+	n, err := m.atWriteRead(atcmd, buf)
+	if err != nil {
+		return err
+	}
+	if bytes.Contains(buf, []byte("READY")) { //\r\n+CPIN: READY\r\nOK\r\n
+		m.l.Infof("ok")
+		return nil
+	} else if bytes.Contains(buf, []byte("ERROR")) { //"\r\n+CME ERROR: 13\r\n" "\r\n+CME ERROR: 10\r\n"
+		m.l.Warnf("ERROR,count%d", m.checkCount)
+	} else {
+		m.l.Errorf("Unknow %q", buf[:n])
+		return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 	}
 	return errors.New("SimIsNotReady")
 }
 
 func (m *M_qws) isRegistertion() error {
 	return nil //TODO 暂未确定用哪个指令查
-	// for i := 0; i < 10; i++ {
 	// 	atcmd := []byte("at+cereg?\r\n")
 	// 	buf := make([]byte, 128)
 	// 	n, err := m.atWriteRead(atcmd, buf)
@@ -291,36 +313,28 @@ func (m *M_qws) isRegistertion() error {
 	// 		return err
 	// 	}
 	// 	if bytes.Contains(buf, []byte("CEREG: 0,1")) || bytes.Contains(buf, []byte("CEREG: 0,5")) { //\r\n+CEREG: 0,1\r\nOK\r\n  或者0,5
-	// 		m.l.Infof("isRegistertion()->ok")
+	// 		m.l.Infof("ok")
 	// 		return nil
 	// 	}
-	// 	m.l.Infof("isRegistertion()->no [%q],cnt%d", buf[:n], i)
+	// 	m.l.Warnf("no %q,cnt%d", buf[:n], i)
 	// 	time.Sleep(time.Second * 3)
-	// }
 	// return errors.New("isNotRegistertion")
 }
 
 func (m *M_qws) hasGateway() error {
-	m.gw = nil
-	var reterr error
-	for i := 0; i < 10; i++ {
-		data, err := ioutil.ReadFile("/tmp/qws/" + m.ifaceName + ".gw")
-		if err != nil {
-			m.l.Error(err)
-			reterr = err
-			time.Sleep(time.Second)
-			continue
-		}
-		gwBS := bytes.Trim(data, "\n")
-		if gw := net.ParseIP(string(gwBS)); gw.To4() != nil {
-			m.gw = gw
-			m.l.Infof("hasGateway(%+v)->ok", m.gw)
-			return nil
-		} else {
-			reterr = errors.New("no gateway found")
-		}
+	data, err := ioutil.ReadFile("/tmp/qws/" + m.ifaceName + ".gw")
+	if err != nil {
+		m.gw = nil
+		m.l.Error(err)
+		return err
 	}
-	return reterr
+	gwBS := bytes.Trim(data, "\n")
+	if gw := net.ParseIP(string(gwBS)); gw.To4() != nil {
+		m.gw = gw
+		m.l.Infof("%+v ok", m.gw)
+		return nil
+	}
+	return errors.New("no gateway found")
 }
 
 //TODO 读取信号
@@ -334,6 +348,6 @@ func (m *M_qws) hasGateway() error {
 //    if(rc <= 0){ mle("rc:%d", rc); return rc; }
 //    char *atarr[30] = {0};
 //    int strcnt = atstr_slice(rdbuf, atarr, sizeof(atarr)/sizeof(char *));
-//    // for(uint8_t i = 0; i < strcnt; i++){ mld("%s", atarr[i]); }
+//    // for(uint8_t i = 0; i < strcnt; i++){ mld("%q", atarr[i]); }
 //    return E_OK;
 //}
