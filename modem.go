@@ -100,7 +100,7 @@ func (m *Modem) Format(entry *logrus.Entry) ([]byte, error) {
 		b = entry.Buffer
 	}
 	//设置格式
-	fmt.Fprintf(b, "%5s %s:%4d %s %s %s() %s\n", entry.Level, path.Base(entry.Caller.File), entry.Caller.Line, m.Name, m.Model, path.Ext(entry.Caller.Function), entry.Message)
+	fmt.Fprintf(b, "%5.5s %s:%4d %s %s %s() %s\n", entry.Level, path.Base(entry.Caller.File), entry.Caller.Line, m.Name, m.Model, path.Ext(entry.Caller.Function), entry.Message)
 	return b.Bytes(), nil
 }
 

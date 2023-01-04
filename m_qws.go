@@ -50,7 +50,7 @@ func (m *M_qws) run(wg *sync.WaitGroup) error {
 	defer wg.Done()
 OuterLop:
 	for {
-		delayTime := time.Millisecond * 500
+		delayTime := time.Millisecond * 50
 		if m.needStop {
 			m.l.Info("needStop")
 			m.state = MSTAT_LOOP_STOP
@@ -63,29 +63,7 @@ OuterLop:
 			m.atDevPath = ""
 			m.ifaceName = ""
 			break OuterLop
-		case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
-			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
-			if m.isIfaceNameChange() {
-				m.state = MSTAT_QWS_STOP_QUEDTEL
-			}
-		case MSTAT_QWS_STOP_QUEDTEL:
-			m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
-			if err := m.stopQuectel(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_QWS_START_QUEDTEL
-			}
-		case MSTAT_QWS_START_QUEDTEL:
-			m.l.Debug("MSTAT_QWS_START_QUEDTEL")
-			if err := m.startQuectel(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_CHECK_ATDEVPATH_CHANGE
-			}
-
-		case MSTAT_CHECK_ATDEVPATH_CHANGE:
+		case MSTAT_INIT, MSTAT_CHECK_ATDEVPATH_CHANGE:
 			m.l.Debug("MSTAT_CHECK_ATDEVPATH_CHANGE")
 			if m.isATdevPathChange() {
 				m.state = MSTAT_CLOSE_ATDEV
@@ -106,7 +84,6 @@ OuterLop:
 			} else {
 				m.state = MSTAT_NOECHO
 			}
-
 		case MSTAT_NOECHO:
 			m.l.Debug("MSTAT_NOECHO")
 			if err := m.atNoEcho(); err != nil {
@@ -150,6 +127,28 @@ OuterLop:
 				delayTime = time.Second * 2
 			} else {
 				m.checkCount = 0
+				m.state = MSTAT_CHECK_IFACENAME_CHANGE
+			}
+
+		case MSTAT_CHECK_IFACENAME_CHANGE:
+			m.l.Debug("MSTAT_CHECK_IFACENAME_CHANGE")
+			if m.isIfaceNameChange() {
+				m.state = MSTAT_QWS_STOP_QUEDTEL
+			}
+		case MSTAT_QWS_STOP_QUEDTEL:
+			m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
+			if err := m.stopQuectel(); err != nil {
+				m.l.Error(err)
+				m.state = MSTAT_INIT
+			} else {
+				m.state = MSTAT_QWS_START_QUEDTEL
+			}
+		case MSTAT_QWS_START_QUEDTEL:
+			m.l.Debug("MSTAT_QWS_START_QUEDTEL")
+			if err := m.startQuectel(); err != nil {
+				m.l.Error(err)
+				m.state = MSTAT_INIT
+			} else {
 				m.state = MSTAT_CHECK_IP
 			}
 		case MSTAT_CHECK_IP:
@@ -191,7 +190,7 @@ OuterLop:
 			if err := m.isDialUp(); err != nil {
 				m.l.Error(err)
 				m.atClose()
-				m.stopQuectel()
+				// m.stopQuectel()
 				m.atDevPath = ""
 				m.ifaceName = ""
 				m.state = MSTAT_INIT
@@ -206,7 +205,7 @@ OuterLop:
 				m.state = MSTAT_HARDRESET
 			} else {
 				m.atClose()
-				m.stopQuectel()
+				// m.stopQuectel()
 				m.atDevPath = ""
 				m.ifaceName = ""
 				m.state = MSTAT_INIT
@@ -219,7 +218,6 @@ OuterLop:
 				m.state = MSTAT_INIT
 			}
 		}
-
 		time.Sleep(delayTime)
 		m.l.Debug("runing")
 	}
