@@ -67,6 +67,8 @@ OuterLop:
 			m.l.Debug("MSTAT_CHECK_ATDEVPATH_CHANGE")
 			if m.isATdevPathChange() {
 				m.state = MSTAT_CLOSE_ATDEV
+			} else {
+				delayTime = time.Second * 5
 			}
 		case MSTAT_CLOSE_ATDEV:
 			m.l.Debug("MSTAT_CLOSE_ATDEV")
@@ -134,6 +136,8 @@ OuterLop:
 			m.l.Debug("MSTAT_CHECK_IFACENAME_CHANGE")
 			if m.isIfaceNameChange() {
 				m.state = MSTAT_QWS_STOP_QUEDTEL
+			} else {
+				delayTime = time.Second * 5
 			}
 		case MSTAT_QWS_STOP_QUEDTEL:
 			m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
@@ -183,6 +187,7 @@ OuterLop:
 		case MSTAT_LOOPING:
 			m.l.Debug("MSTAT_LOOPING")
 			if err := m.atIsOK(); err != nil {
+				m.checkCount = 0
 				m.l.Error(err)
 				m.state = MSTAT_SOFTRESET
 				break
@@ -201,9 +206,15 @@ OuterLop:
 		case MSTAT_SOFTRESET:
 			m.l.Debug("MSTAT_SOFTRESET")
 			if err := m.atSoftReset(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_HARDRESET
+				if m.checkCount > 5 {
+					m.checkCount = 0
+					m.l.Error(err)
+					m.state = MSTAT_HARDRESET
+				}
+				m.checkCount++
+				delayTime = time.Second * 5
 			} else {
+				m.checkCount = 0
 				m.atClose()
 				// m.stopQuectel()
 				m.atDevPath = ""
