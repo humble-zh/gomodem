@@ -63,7 +63,15 @@ OuterLop:
 			m.atDevPath = ""
 			m.ifaceName = ""
 			break OuterLop
-		case MSTAT_INIT, MSTAT_CHECK_ATDEVPATH_CHANGE:
+		case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
+			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
+			if err := m.findIfaceName(); err != nil {
+				m.l.Error(err)
+				delayTime = time.Second * 5
+			} else {
+				m.state = MSTAT_CHECK_ATDEVPATH_CHANGE
+			}
+		case MSTAT_CHECK_ATDEVPATH_CHANGE:
 			m.l.Debug("MSTAT_CHECK_ATDEVPATH_CHANGE")
 			if m.isATdevPathChange() {
 				m.state = MSTAT_CLOSE_ATDEV
@@ -129,15 +137,7 @@ OuterLop:
 				delayTime = time.Second * 2
 			} else {
 				m.checkCount = 0
-				m.state = MSTAT_CHECK_IFACENAME_CHANGE
-			}
-
-		case MSTAT_CHECK_IFACENAME_CHANGE:
-			m.l.Debug("MSTAT_CHECK_IFACENAME_CHANGE")
-			if m.isIfaceNameChange() {
 				m.state = MSTAT_QWS_STOP_QUEDTEL
-			} else {
-				delayTime = time.Second * 5
 			}
 		case MSTAT_QWS_STOP_QUEDTEL:
 			m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
@@ -195,7 +195,7 @@ OuterLop:
 			if err := m.isDialUp(); err != nil {
 				m.l.Error(err)
 				m.atClose()
-				// m.stopQuectel()
+				m.stopQuectel()
 				m.atDevPath = ""
 				m.ifaceName = ""
 				m.state = MSTAT_INIT
@@ -216,7 +216,7 @@ OuterLop:
 			} else {
 				m.checkCount = 0
 				m.atClose()
-				// m.stopQuectel()
+				m.stopQuectel()
 				m.atDevPath = ""
 				m.ifaceName = ""
 				m.state = MSTAT_INIT

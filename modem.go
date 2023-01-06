@@ -139,7 +139,7 @@ func (m *Modem) run(wg *sync.WaitGroup) error {
 }
 
 // ls -l /sys/class/net |awk -F'[/]' '{if($9~/1-1:1.4/){ print $NF }}'
-func (m *Modem) isIfaceNameChange() bool {
+func (m *Modem) findIfaceName() error {
 	cmd := exec.Command("bash", "-c", m.FindIfaceName)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout // 标准输出
@@ -148,14 +148,16 @@ func (m *Modem) isIfaceNameChange() bool {
 	outStr, errStr := strings.Replace(string(stdout.Bytes()), "\n", "", -1), strings.Replace(string(stderr.Bytes()), "\n", "", -1)
 	m.l.Debugf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
 	if m.ifaceName != outStr {
-		m.l.Infof("iface:%q->%q", m.ifaceName, outStr)
+		m.l.Infof("ifaceName:%q->%q", m.ifaceName, outStr)
 		m.ifaceName = outStr
-		return true
+		return nil
 	}
 	if len(outStr) == 0 {
 		m.l.Errorf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
+		return errors.New("no ifaceName found")
 	}
-	return false
+	m.l.Info("ifaceName not change")
+	return nil
 }
 
 // ls -l /sys/class/tty/ttyUSB*|awk -F'[/]' '{if($13~/1-1:1.3/){ print "/dev/"$NF }}' go exec不能用通配符
