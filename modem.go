@@ -366,6 +366,7 @@ func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
 		logrus.Errorf("json.Unmarshal()->:%v", err)
 		return nil, err
 	}
+	raw.PingTargets = append(raw.PingTargets, "223.5.5.5")
 	switch raw.Model {
 	case "ep06":
 		return &M_qws_ep06{M_qws{Modem: raw}}, nil
