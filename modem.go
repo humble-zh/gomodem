@@ -54,8 +54,8 @@ const (
 type Modem struct {
 	CfgJsonBytes  []byte
 	Model         string   `json:"model"`
-	FindIfaceName string   `json:"findifacename"`
-	FindATdevPath string   `json:"findatdevpath"`
+	FindIfaceName string   `json:"findIfaceName"`
+	FindATdevPath string   `json:"findATdevPath"`
 	Name          string   `json:"name"`
 	PingTargets   []string `json:"pingTargets"`
 	l             *logrus.Logger
