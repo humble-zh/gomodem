@@ -21,9 +21,10 @@ func main() {
 	mslice := make([]modem.IModem, mtot)
 	// log.Debugf("%#v", mslice)
 
-	// m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"ep06\",\"findIfaceName\":\"ls -l /sys/class/net |awk -F'[/]' '{if($9~/1-1:1.4/){ print $NF }}'\",\"findATdevPath\":\"ls -l /sys/class/tty/ttyUSB*|awk -F'[/]' '{if($13~/1-1:1.3/){ print \\\"/dev/\\\"$NF }}'\",\"quectel\":\"/usr/bin/quectel-CM\",\"pingTargets\":[\"223.5.5.5\",\"8.8.8.8\"]}"))
-	m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"rm500q\",\"findIfaceName\":\"ls -l /sys/class/net|grep '2-4:1.4'|awk -F'[/]' '{ print $NF }'\",\"findATdevPath\":\"ls -l /sys/class/tty/ttyUSB*|grep '2-4:1.3'|awk -F'[/]' '{ print \\\"/dev/\\\"$NF }'\",\"quectel\":\"/usr/bin/quectel-CM\",\"pingTargets\":[\"223.5.5.5\",\"8.8.8.8\"]}"))
-	// m, err := modem.NewWithJsonBytes([]byte("{\"model\":\"rm500q\",\"findIfaceName\":\"ls -l /sys/class/net|grep '2-3:1.4'|awk -F'[/]' '{ print $NF }'\",\"findATdevPath\":\"ls -l /sys/class/tty/ttyUSB*|grep '2-3:1.3'|awk -F'[/]' '{ print \\\"/dev/\\\"$NF }'\",\"quectel\":\"/usr/bin/quectel-CM\",\"pingTargets\":[\"223.5.5.5\",\"8.8.8.8\"]}"))
+	// m, err := modem.NewWithJsonBytes([]byte(`{"name":"sim1","model":"ep06","busType":"usb","findIfaceName":"ls -l /sys/class/net |awk -F'[/]' '{if($9~/1-1:1.4/){ print $NF }}'","findATdevPath":"ls -l /sys/class/tty/ttyUSB*|awk -F'[/]' '{if($13~/1-1:1.3/){ print \"/dev/\"$NF }}'","quectel":"/usr/bin/quectel-CM","pingTargets":["223.5.5.5","8.8.8.8"]}`))
+	// m, err := modem.NewWithJsonBytes([]byte(`{"name":"sim1","model":"rm500q","busType":"pcie","findIfaceName":"ls -l /sys/class/net|grep '2-4:1.4'|awk -F'[/]' '{ print $NF }'","findATdevPath":"ls -l /sys/class/tty/ttyUSB*|grep '2-4:1.3'|awk -F'[/]' '{ print \"/dev/\"$NF }'","quectel":"/usr/bin/quectel-CM","pingTargets":["223.5.5.5","8.8.8.8"]}`))
+	m, err := modem.NewWithJsonBytes([]byte(`{"name":"sim1","model":"rm500q","busType":"pcie","findIfaceName":"echo 'rmnet_mhi0'","findATdevPath":"echo '/dev/mhi_DUN'","quectel":"/usr/bin/quectel-CM","pingTargets":["223.5.5.5","8.8.8.8"]}`))
+	// m, err := modem.NewWithJsonBytes([]byte(`{"name":"sim1","model":"rm500q","findIfaceName":"ls -l /sys/class/net|grep '2-3:1.4'|awk -F'[/]' '{ print $NF }'","findATdevPath":"ls -l /sys/class/tty/ttyUSB*|grep '2-3:1.3'|awk -F'[/]' '{ print \"/dev/\"$NF }'","quectel":"/usr/bin/quectel-CM","pingTargets":["223.5.5.5","8.8.8.8"]}`))
 	if err != nil {
 		log.Error(err)
 		return

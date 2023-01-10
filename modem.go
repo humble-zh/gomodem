@@ -62,6 +62,7 @@ type Modem struct {
 	needStop      bool
 	state         MState
 	ifaceName     string
+	realIfaceName string
 	atDevPath     string
 	at            *serial.Port
 	ips           []net.IP
@@ -69,8 +70,7 @@ type Modem struct {
 }
 
 func (m *Modem) String() string {
-	// return "CfgJsonBytes:'" + string(m.CfgJsonBytes) + "',\n Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n FindIfaceName:'" + m.FindIfaceName + "'\n"
-	return "Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindIfaceName + "',\n FindIfaceName:'" + m.FindATdevPath + "'\n"
+	return fmt.Sprintf("Name:%q,Model:%q,FindIfaceName:%q,FindATdevPath:%q", m.Name, m.Model, m.FindIfaceName, m.FindATdevPath)
 }
 func (m *Modem) GoString() string {
 	return m.String()
@@ -86,7 +86,7 @@ func (m *Modem) ToJson() string {
 	if m.gw.To4() != nil {
 		gwStr = m.gw.String()
 	}
-	return "{\"iface\":\"" + m.ifaceName + "\"," +
+	return "{\"iface\":\"" + m.realIfaceName + "\"," +
 		"\"ips\":[" + strings.Join(ipSS, ",") + "]," +
 		"\"gw\":\"" + gwStr +
 		"\"}"
@@ -149,7 +149,7 @@ func (m *Modem) findIfaceName() error {
 	m.l.Debugf("cmd.Run(%+v)->%v,%q,%q", cmd, err, outStr, errStr)
 	if m.ifaceName != outStr {
 		m.l.Infof("ifaceName:%q->%q", m.ifaceName, outStr)
-		m.ifaceName = outStr
+		m.ifaceName, m.realIfaceName = outStr, outStr
 		return nil
 	}
 	if len(outStr) == 0 {
@@ -293,7 +293,7 @@ func (m *Modem) isRegistertion() error {
 func (m *Modem) hasIP() error {
 	var reterr error
 	for i := 0; i < 10; i++ {
-		iface, err := net.InterfaceByName(m.ifaceName)
+		iface, err := net.InterfaceByName(m.realIfaceName)
 		if err != nil {
 			m.l.Error(err)
 			reterr = err
@@ -331,7 +331,7 @@ func (m *Modem) hasGateway() error {
 func (m *Modem) isDialUp() error {
 	var err error
 	for _, destIP := range m.PingTargets {
-		cmd := exec.Command("ping", destIP, "-I", m.ifaceName, "-c", "1", "-W", "3")
+		cmd := exec.Command("ping", destIP, "-I", m.realIfaceName, "-c", "1", "-W", "3")
 		err = cmd.Run() //只执行，不获取输出
 		if err != nil { //ping失败
 			m.l.Errorf("cmd.Run(%+v)->%v", cmd, err)
@@ -366,15 +366,21 @@ func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
 		logrus.Errorf("json.Unmarshal()->:%v", err)
 		return nil, err
 	}
-	raw.PingTargets = append(raw.PingTargets, "223.5.5.5")
+	raw.PingTargets = append(raw.PingTargets, "223.6.6.6")
+	var imodem IModem
 	switch raw.Model {
 	case "ep06":
-		return &M_qws_ep06{M_qws{Modem: raw}}, nil
+		imodem = &M_qws_ep06{M_qws: M_qws{Modem: raw, BusType: "usb"}}
 	case "rm500q":
-		return &M_qws_rm500q{M_qws{Modem: raw}}, nil
+		imodem = &M_qws_rm500q{M_qws: M_qws{Modem: raw, BusType: "pcie"}}
 	default:
 		panic("Unknow supported Model" + raw.Model)
 	}
+	if err := json.Unmarshal(jsonbytes, imodem); err != nil {
+		logrus.Errorf("json.Unmarshal()->:%v", err)
+		return nil, err
+	}
+	return imodem, nil
 }
 
 func NewWithJsonFile(jsonfile string) (IModem, error) {

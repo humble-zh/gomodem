@@ -17,6 +17,7 @@ import (
 
 type M_qws struct {
 	Modem
+	BusType    string `json:"busType"`
 	Quectel    string `json:"quectel"`
 	cmd        *exec.Cmd
 	checkCount uint8
@@ -24,8 +25,7 @@ type M_qws struct {
 }
 
 func (m *M_qws) String() string {
-	// return "CfgJsonBytes:'" + string(m.CfgJsonBytes) + "',\n Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n FindIfaceName:'" + m.FindIfaceName + "'\n"
-	return "Model:'" + m.Model + "',\n FindIfaceName:'" + m.FindIfaceName + "',\n FindIfaceName:'" + m.FindATdevPath + "',\n Quectel:'" + m.Quectel + "'\n"
+	return fmt.Sprintf("Name:%q,Model:%q,BustType:%q,FindIfaceName:%q,FindATdevPath:%q", m.Name, m.Model, m.BusType, m.FindIfaceName, m.FindATdevPath)
 }
 func (m *M_qws) GoString() string {
 	return m.String()
@@ -61,7 +61,7 @@ OuterLop:
 			m.atClose()
 			m.stopQuectel()
 			m.atDevPath = ""
-			m.ifaceName = ""
+			m.ifaceName, m.realIfaceName = "", ""
 			break OuterLop
 		case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
 			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
@@ -197,7 +197,7 @@ OuterLop:
 				m.atClose()
 				m.stopQuectel()
 				m.atDevPath = ""
-				m.ifaceName = ""
+				m.ifaceName, m.realIfaceName = "", ""
 				m.state = MSTAT_INIT
 				break
 			}
@@ -218,7 +218,7 @@ OuterLop:
 				m.atClose()
 				m.stopQuectel()
 				m.atDevPath = ""
-				m.ifaceName = ""
+				m.ifaceName, m.realIfaceName = "", ""
 				m.state = MSTAT_INIT
 			}
 		case MSTAT_HARDRESET:
@@ -233,6 +233,17 @@ OuterLop:
 		m.l.Debug("runing")
 	}
 	m.l.Info("Done")
+	return nil
+}
+
+func (m *M_qws) findIfaceName() error {
+	if err := m.Modem.findIfaceName(); err != nil {
+		return err
+	}
+	if m.BusType == "pcie" {
+		m.realIfaceName = m.ifaceName + ".1"
+		m.l.Infof("realIfaceName:%q", m.realIfaceName)
+	}
 	return nil
 }
 
@@ -331,7 +342,7 @@ func (m *M_qws) isRegistertion() error {
 }
 
 func (m *M_qws) hasGateway() error {
-	data, err := ioutil.ReadFile("/tmp/qws/" + m.ifaceName + ".gw")
+	data, err := ioutil.ReadFile("/tmp/qws/" + m.realIfaceName + ".gw")
 	if err != nil {
 		m.gw = nil
 		m.l.Error(err)
