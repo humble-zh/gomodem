@@ -58,6 +58,7 @@ type Modem struct {
 	FindATdevPath string   `json:"findATdevPath"`
 	Name          string   `json:"name"`
 	PingTargets   []string `json:"pingTargets"`
+	SimHotplug    bool     `json:"simHotplug"`
 	l             *logrus.Logger
 	needStop      bool
 	state         MState

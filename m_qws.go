@@ -297,14 +297,19 @@ func (m *M_qws) startQuectel() error {
 }
 
 func (m *M_qws) hotplugDetect() error {
-	atcmd := []byte("at+qsimdet=1,0\r\n")
+	var atcmd []byte
+	if m.SimHotplug {
+		atcmd = []byte("at+qsimdet=1,0\r\n")
+	} else {
+		atcmd = []byte("at+qsimdet=0,0\r\n")
+	}
 	buf := make([]byte, 128)
 	n, err := m.atWriteRead(atcmd, buf)
 	if err != nil {
 		return err
 	}
 	if bytes.Contains(buf, []byte("OK")) {
-		m.l.Infof("ok")
+		m.l.Infof("%q ok", string(atcmd))
 		return nil
 	}
 	m.l.Warnf("Unknow [%q]", buf[:n])
