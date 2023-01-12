@@ -67,7 +67,7 @@ OuterLop:
 			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
 			if err := m.findIfaceName(); err != nil {
 				m.l.Error(err)
-				delayTime = time.Second * 5
+				delayTime = time.Second * 3
 			} else {
 				m.state = MSTAT_CHECK_ATDEVPATH_CHANGE
 			}
@@ -76,7 +76,7 @@ OuterLop:
 			if m.isATdevPathChange() {
 				m.state = MSTAT_CLOSE_ATDEV
 			} else {
-				delayTime = time.Second * 5
+				delayTime = time.Second * 3
 			}
 		case MSTAT_CLOSE_ATDEV:
 			m.l.Debug("MSTAT_CLOSE_ATDEV")
@@ -120,7 +120,7 @@ OuterLop:
 					m.state = MSTAT_SOFTRESET
 				}
 				m.checkCount++
-				delayTime = time.Second * 2
+				delayTime = time.Second * 3
 			} else {
 				m.checkCount = 0
 				m.state = MSTAT_CHECK_REGISTRATIONM
@@ -201,7 +201,7 @@ OuterLop:
 				m.state = MSTAT_INIT
 				break
 			}
-			delayTime = time.Second * 5
+			delayTime = time.Second * 3
 
 		case MSTAT_SOFTRESET:
 			m.l.Debug("MSTAT_SOFTRESET")
@@ -212,7 +212,7 @@ OuterLop:
 					m.state = MSTAT_HARDRESET
 				}
 				m.checkCount++
-				delayTime = time.Second * 5
+				delayTime = time.Second * 3
 			} else {
 				m.checkCount = 0
 				m.atClose()
@@ -248,6 +248,9 @@ func (m *M_qws) findIfaceName() error {
 }
 
 func (m *M_qws) stopQuectel() error {
+	if len(m.ifaceName) == 0 {
+		return errors.New("no ifaceName found")
+	}
 	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifaceName)
 	err := m.cmd.Run()
 	m.l.Infof("cmd.Run(%+v)->%v", m.cmd, err)
@@ -255,6 +258,9 @@ func (m *M_qws) stopQuectel() error {
 	return nil
 }
 func (m *M_qws) startQuectel() error {
+	if len(m.ifaceName) == 0 {
+		return errors.New("no ifaceName found")
+	}
 	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifaceName)
 	out, err := m.cmd.CombinedOutput()
 	// if err != nil {
