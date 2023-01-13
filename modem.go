@@ -2,10 +2,10 @@ package modem
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os/exec"
 	"path"
@@ -19,13 +19,10 @@ import (
 
 type IModem interface {
 	Format(entry *logrus.Entry) ([]byte, error)
-	Open() error
-	OpenWithLogger(logger *logrus.Logger) error
-	Close() error
+	Init() error
+	InitWithLogger(logger *logrus.Logger) error
 	ToJson() string
 	run(wg *sync.WaitGroup) error
-	loopStart()
-	loopStop()
 }
 
 type MState uint8
@@ -48,7 +45,6 @@ const (
 	MSTAT_LOOPING
 	MSTAT_SOFTRESET
 	MSTAT_HARDRESET
-	MSTAT_LOOP_STOP
 )
 
 type Modem struct {
@@ -59,8 +55,8 @@ type Modem struct {
 	Name          string   `json:"name"`
 	PingTargets   []string `json:"pingTargets"`
 	SimHotplug    bool     `json:"simHotplug"`
+	ctx           context.Context
 	l             *logrus.Logger
-	needStop      bool
 	state         MState
 	ifaceName     string
 	realIfaceName string
@@ -105,10 +101,10 @@ func (m *Modem) Format(entry *logrus.Entry) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (m *Modem) Open() error {
-	return m.OpenWithLogger(nil)
+func (m *Modem) Init() error {
+	return m.InitWithLogger(nil)
 }
-func (m *Modem) OpenWithLogger(logger *logrus.Logger) error {
+func (m *Modem) InitWithLogger(logger *logrus.Logger) error {
 	if logger != nil {
 		m.l = logger
 	} else {
@@ -118,30 +114,20 @@ func (m *Modem) OpenWithLogger(logger *logrus.Logger) error {
 		m.l.Errorf("json.Unmarshal()->:%v", err)
 		return err
 	}
-	return nil
-}
-func (m *Modem) Close() error {
-	// m.l.Info("ok")
+	m.l.Info("ok")
 	return nil
 }
 
 func (m *Modem) run(wg *sync.WaitGroup) error {
-	defer wg.Done()
-	for {
-		if m.needStop {
-			m.l.Info("needStop")
-			break
-		}
-		time.Sleep(time.Second * 2)
-		m.l.Info("runing")
-	}
-	m.l.Info("Done")
+	defer func() {
+		m.l.Info("Done")
+		wg.Done()
+	}()
 	return nil
 }
 
-// ls -l /sys/class/net |awk -F'[/]' '{if($9~/1-1:1.4/){ print $NF }}'
 func (m *Modem) findIfaceName() error {
-	cmd := exec.Command("bash", "-c", m.FindIfaceName)
+	cmd := exec.CommandContext(m.ctx, "bash", "-c", m.FindIfaceName)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout // 标准输出
 	cmd.Stderr = &stderr // 标准错误
@@ -161,10 +147,8 @@ func (m *Modem) findIfaceName() error {
 	return nil
 }
 
-// ls -l /sys/class/tty/ttyUSB*|awk -F'[/]' '{if($13~/1-1:1.3/){ print "/dev/"$NF }}' go exec不能用通配符
-// ls -l /sys/class/tty/|awk -F'[/ ]' '{if($20~/1-1:1.3/){ print "/dev/"$NF }}'
 func (m *Modem) isATdevPathChange() bool {
-	cmd := exec.Command("bash", "-c", m.FindATdevPath)
+	cmd := exec.CommandContext(m.ctx, "bash", "-c", m.FindATdevPath)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout // 标准输出
 	cmd.Stderr = &stderr // 标准错误
@@ -332,7 +316,7 @@ func (m *Modem) hasGateway() error {
 func (m *Modem) isDialUp() error {
 	var err error
 	for _, destIP := range m.PingTargets {
-		cmd := exec.Command("ping", destIP, "-I", m.realIfaceName, "-c", "1", "-W", "3")
+		cmd := exec.CommandContext(m.ctx, "ping", destIP, "-I", m.realIfaceName, "-c", "1", "-W", "3")
 		err = cmd.Run() //只执行，不获取输出
 		if err != nil { //ping失败
 			m.l.Errorf("cmd.Run(%+v)->%v", cmd, err)
@@ -345,28 +329,17 @@ func (m *Modem) isDialUp() error {
 	return err
 }
 
-func (m *Modem) loopStart() {
-	m.l.Info("ok")
-	m.needStop = false
-}
-func (m *Modem) loopStop() {
-	m.l.Info("ok")
-	m.needStop = true
-}
-func Start(m IModem, wg *sync.WaitGroup) {
-	m.loopStart()
+func Run(m IModem, wg *sync.WaitGroup) {
 	m.run(wg)
 }
-func Stop(m IModem) {
-	m.loopStop()
-}
 
-func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
+func NewWithJsonBytes(ctx context.Context, jsonbytes []byte) (IModem, error) {
 	raw := Modem{CfgJsonBytes: jsonbytes}
 	if err := json.Unmarshal(jsonbytes, &raw); err != nil {
 		logrus.Errorf("json.Unmarshal()->:%v", err)
 		return nil, err
 	}
+	raw.ctx = ctx
 	raw.PingTargets = append(raw.PingTargets, "223.6.6.6")
 	var imodem IModem
 	switch raw.Model {
@@ -382,13 +355,4 @@ func NewWithJsonBytes(jsonbytes []byte) (IModem, error) {
 		return nil, err
 	}
 	return imodem, nil
-}
-
-func NewWithJsonFile(jsonfile string) (IModem, error) {
-	jsonbytes, err := ioutil.ReadFile(jsonfile)
-	if err != nil {
-		logrus.Errorf("ioutil.ReadFile()->:%v", err)
-		return nil, err
-	}
-	return NewWithJsonBytes(jsonbytes)
 }

@@ -31,10 +31,10 @@ func (m *M_qws) GoString() string {
 	return m.String()
 }
 
-func (m *M_qws) Open() error {
-	return m.OpenWithLogger(nil)
+func (m *M_qws) Init() error {
+	return m.InitWithLogger(nil)
 }
-func (m *M_qws) OpenWithLogger(logger *logrus.Logger) error {
+func (m *M_qws) InitWithLogger(logger *logrus.Logger) error {
 	if logger != nil {
 		m.l = logger
 	} else {
@@ -44,195 +44,201 @@ func (m *M_qws) OpenWithLogger(logger *logrus.Logger) error {
 		m.l.Errorf("json.Unmarshal()->:%v", err)
 		return err
 	}
+	m.l.Info("ok")
 	return nil
 }
+
 func (m *M_qws) run(wg *sync.WaitGroup) error {
-	defer wg.Done()
-OuterLop:
+	defer func() {
+		m.l.Info("Done")
+		wg.Done()
+	}()
+	t := time.NewTicker(time.Millisecond * 50)
+	defer t.Stop()
+Loop:
 	for {
 		delayTime := time.Millisecond * 50
-		if m.needStop {
-			m.l.Info("needStop")
-			m.state = MSTAT_LOOP_STOP
-		}
-
-		switch m.state {
-		case MSTAT_LOOP_STOP:
+		select {
+		case <-m.ctx.Done():
+			m.l.Info("<-m.ctx.Done()")
 			m.atClose()
-			m.stopQuectel()
+			// m.stopQuectel() //不需要停，保持4G网络
 			m.atDevPath = ""
 			m.ifaceName, m.realIfaceName = "", ""
-			break OuterLop
-		case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
-			m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
-			if err := m.findIfaceName(); err != nil {
-				m.l.Error(err)
-				delayTime = time.Second * 3
-			} else {
-				m.state = MSTAT_CHECK_ATDEVPATH_CHANGE
-			}
-		case MSTAT_CHECK_ATDEVPATH_CHANGE:
-			m.l.Debug("MSTAT_CHECK_ATDEVPATH_CHANGE")
-			if m.isATdevPathChange() {
-				m.state = MSTAT_CLOSE_ATDEV
-			} else {
-				delayTime = time.Second * 3
-			}
-		case MSTAT_CLOSE_ATDEV:
-			m.l.Debug("MSTAT_CLOSE_ATDEV")
-			if err := m.atClose(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_OPEN_ATDEV
-			}
-		case MSTAT_OPEN_ATDEV:
-			m.l.Debug("MSTAT_OPEN_ATDEV")
-			if err := m.atOpen(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_NOECHO
-			}
-		case MSTAT_NOECHO:
-			m.l.Debug("MSTAT_NOECHO")
-			if err := m.atNoEcho(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_HOTPLUGDETECT
-			}
-		case MSTAT_HOTPLUGDETECT:
-			m.l.Debug("MSTAT_HOTPLUGDETECT")
-			if err := m.hotplugDetect(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_CHECK_SIMREADY
-				m.checkCount = 0
-			}
-		case MSTAT_CHECK_SIMREADY:
-			m.l.Debug("MSTAT_CHECK_SIMREADY")
-			if err := m.isSimReady(); err != nil {
-				if m.checkCount > 10 {
-					m.checkCount = 0
+			break Loop
+		case <-t.C:
+			switch m.state {
+			case MSTAT_INIT, MSTAT_CHECK_IFACENAME_CHANGE:
+				m.l.Debug("MSTAT_INIT,MSTAT_CHECK_IFACENAME_CHANGE")
+				if err := m.findIfaceName(); err != nil {
 					m.l.Error(err)
-					m.state = MSTAT_SOFTRESET
+					delayTime = time.Second * 3
+				} else {
+					m.state = MSTAT_CHECK_ATDEVPATH_CHANGE
 				}
-				m.checkCount++
-				delayTime = time.Second * 3
-			} else {
-				m.checkCount = 0
-				m.state = MSTAT_CHECK_REGISTRATIONM
-			}
-		case MSTAT_CHECK_REGISTRATIONM:
-			m.l.Debug("MSTAT_CHECK_REGISTRATIONM")
-			if err := m.isRegistertion(); err != nil {
-				if m.checkCount > 10 {
-					m.checkCount = 0
+			case MSTAT_CHECK_ATDEVPATH_CHANGE:
+				m.l.Debug("MSTAT_CHECK_ATDEVPATH_CHANGE")
+				if m.isATdevPathChange() {
+					m.state = MSTAT_CLOSE_ATDEV
+				} else {
+					delayTime = time.Second * 3
+				}
+			case MSTAT_CLOSE_ATDEV:
+				m.l.Debug("MSTAT_CLOSE_ATDEV")
+				if err := m.atClose(); err != nil {
 					m.l.Error(err)
-					m.state = MSTAT_SOFTRESET
+					m.state = MSTAT_INIT
+				} else {
+					m.state = MSTAT_OPEN_ATDEV
 				}
-				m.checkCount++
-				delayTime = time.Second * 2
-			} else {
-				m.checkCount = 0
-				m.state = MSTAT_QWS_STOP_QUEDTEL
-			}
-		case MSTAT_QWS_STOP_QUEDTEL:
-			m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
-			if err := m.stopQuectel(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_QWS_START_QUEDTEL
-			}
-		case MSTAT_QWS_START_QUEDTEL:
-			m.l.Debug("MSTAT_QWS_START_QUEDTEL")
-			if err := m.startQuectel(); err != nil {
-				m.l.Error(err)
-				m.state = MSTAT_INIT
-			} else {
-				m.state = MSTAT_CHECK_IP
-			}
-		case MSTAT_CHECK_IP:
-			m.l.Debug("MSTAT_CHECK_IP")
-			if err := m.hasIP(); err != nil {
-				if m.checkCount > 10 {
-					m.checkCount = 0
+			case MSTAT_OPEN_ATDEV:
+				m.l.Debug("MSTAT_OPEN_ATDEV")
+				if err := m.atOpen(); err != nil {
 					m.l.Error(err)
-					m.state = MSTAT_SOFTRESET
+					m.state = MSTAT_INIT
+				} else {
+					m.state = MSTAT_NOECHO
 				}
-				m.checkCount++
-				delayTime = time.Second * 2
-			} else {
-				m.checkCount = 0
-				m.state = MSTAT_CHECK_GATEWAY
-			}
-		case MSTAT_CHECK_GATEWAY:
-			m.l.Debug("MSTAT_CHECK_GATEWAY")
-			if err := m.hasGateway(); err != nil {
-				if m.checkCount > 10 {
-					m.checkCount = 0
+			case MSTAT_NOECHO:
+				m.l.Debug("MSTAT_NOECHO")
+				if err := m.atNoEcho(); err != nil {
 					m.l.Error(err)
-					m.state = MSTAT_SOFTRESET
+					m.state = MSTAT_INIT
+				} else {
+					m.state = MSTAT_HOTPLUGDETECT
 				}
-				m.checkCount++
-				delayTime = time.Second * 2
-			} else {
-				m.checkCount = 0
-				m.state = MSTAT_LOOPING
-			}
+			case MSTAT_HOTPLUGDETECT:
+				m.l.Debug("MSTAT_HOTPLUGDETECT")
+				if err := m.hotplugDetect(); err != nil {
+					m.l.Error(err)
+					m.state = MSTAT_INIT
+				} else {
+					m.state = MSTAT_CHECK_SIMREADY
+					m.checkCount = 0
+				}
+			case MSTAT_CHECK_SIMREADY:
+				m.l.Debug("MSTAT_CHECK_SIMREADY")
+				if err := m.isSimReady(); err != nil {
+					if m.checkCount > 10 {
+						m.checkCount = 0
+						m.l.Error(err)
+						m.state = MSTAT_SOFTRESET
+					}
+					m.checkCount++
+					delayTime = time.Second * 3
+				} else {
+					m.checkCount = 0
+					m.state = MSTAT_CHECK_REGISTRATIONM
+				}
+			case MSTAT_CHECK_REGISTRATIONM:
+				m.l.Debug("MSTAT_CHECK_REGISTRATIONM")
+				if err := m.isRegistertion(); err != nil {
+					if m.checkCount > 10 {
+						m.checkCount = 0
+						m.l.Error(err)
+						m.state = MSTAT_SOFTRESET
+					}
+					m.checkCount++
+					delayTime = time.Second * 2
+				} else {
+					m.checkCount = 0
+					m.state = MSTAT_QWS_STOP_QUEDTEL
+				}
+			case MSTAT_QWS_STOP_QUEDTEL:
+				m.l.Debug("MSTAT_QWS_STOP_QUEDTEL")
+				if err := m.stopQuectel(); err != nil {
+					m.l.Error(err)
+					m.state = MSTAT_INIT
+				} else {
+					m.state = MSTAT_QWS_START_QUEDTEL
+				}
+			case MSTAT_QWS_START_QUEDTEL:
+				m.l.Debug("MSTAT_QWS_START_QUEDTEL")
+				if err := m.startQuectel(); err != nil {
+					m.l.Error(err)
+					m.state = MSTAT_INIT
+				} else {
+					m.state = MSTAT_CHECK_IP
+				}
+			case MSTAT_CHECK_IP:
+				m.l.Debug("MSTAT_CHECK_IP")
+				if err := m.hasIP(); err != nil {
+					if m.checkCount > 10 {
+						m.checkCount = 0
+						m.l.Error(err)
+						m.state = MSTAT_SOFTRESET
+					}
+					m.checkCount++
+					delayTime = time.Second * 2
+				} else {
+					m.checkCount = 0
+					m.state = MSTAT_CHECK_GATEWAY
+				}
+			case MSTAT_CHECK_GATEWAY:
+				m.l.Debug("MSTAT_CHECK_GATEWAY")
+				if err := m.hasGateway(); err != nil {
+					if m.checkCount > 10 {
+						m.checkCount = 0
+						m.l.Error(err)
+						m.state = MSTAT_SOFTRESET
+					}
+					m.checkCount++
+					delayTime = time.Second * 2
+				} else {
+					m.checkCount = 0
+					m.state = MSTAT_LOOPING
+				}
 
-		case MSTAT_LOOPING:
-			m.l.Debug("MSTAT_LOOPING")
-			if err := m.atIsOK(); err != nil {
-				m.checkCount = 0
-				m.l.Error(err)
-				m.state = MSTAT_SOFTRESET
-				break
-			}
-			if err := m.isDialUp(); err != nil {
-				m.l.Error(err)
-				m.atClose()
-				m.stopQuectel()
-				m.atDevPath = ""
-				m.ifaceName, m.realIfaceName = "", ""
-				m.state = MSTAT_INIT
-				break
-			}
-			delayTime = time.Second * 3
-
-		case MSTAT_SOFTRESET:
-			m.l.Debug("MSTAT_SOFTRESET")
-			if err := m.atSoftReset(); err != nil {
-				if m.checkCount > 5 {
+			case MSTAT_LOOPING:
+				m.l.Debug("MSTAT_LOOPING")
+				if err := m.atIsOK(); err != nil {
 					m.checkCount = 0
 					m.l.Error(err)
-					m.state = MSTAT_HARDRESET
+					m.state = MSTAT_SOFTRESET
+					break
 				}
-				m.checkCount++
+				if err := m.isDialUp(); err != nil {
+					m.l.Error(err)
+					m.atClose()
+					m.stopQuectel()
+					m.atDevPath = ""
+					m.ifaceName, m.realIfaceName = "", ""
+					m.state = MSTAT_INIT
+					break
+				}
 				delayTime = time.Second * 3
-			} else {
-				m.checkCount = 0
-				m.atClose()
-				m.stopQuectel()
-				m.atDevPath = ""
-				m.ifaceName, m.realIfaceName = "", ""
-				m.state = MSTAT_INIT
+
+			case MSTAT_SOFTRESET:
+				m.l.Debug("MSTAT_SOFTRESET")
+				if err := m.atSoftReset(); err != nil {
+					if m.checkCount > 5 {
+						m.checkCount = 0
+						m.l.Error(err)
+						m.state = MSTAT_HARDRESET
+					}
+					m.checkCount++
+					delayTime = time.Second * 3
+				} else {
+					m.checkCount = 0
+					m.atClose()
+					m.stopQuectel()
+					m.atDevPath = ""
+					m.ifaceName, m.realIfaceName = "", ""
+					m.state = MSTAT_INIT
+				}
+			case MSTAT_HARDRESET:
+				m.l.Debug("MSTAT_HARDRESET")
+				if err := m.hardReset(); err != nil {
+					m.l.Error(err)
+				} else {
+					m.state = MSTAT_INIT
+				}
 			}
-		case MSTAT_HARDRESET:
-			m.l.Debug("MSTAT_HARDRESET")
-			if err := m.hardReset(); err != nil {
-				m.l.Error(err)
-			} else {
-				m.state = MSTAT_INIT
-			}
+			t.Reset(delayTime)
 		}
-		time.Sleep(delayTime)
 		m.l.Debug("runing")
 	}
-	m.l.Info("Done")
+	m.l.Info("stop")
 	return nil
 }
 
@@ -251,7 +257,7 @@ func (m *M_qws) stopQuectel() error {
 	if len(m.ifaceName) == 0 {
 		return errors.New("no ifaceName found")
 	}
-	m.cmd = exec.Command("/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifaceName)
+	m.cmd = exec.CommandContext(m.ctx, "/usr/bin/pkill", "-f", m.Quectel+" -i "+m.ifaceName)
 	err := m.cmd.Run()
 	m.l.Infof("cmd.Run(%+v)->%v", m.cmd, err)
 	m.wg.Wait()
@@ -261,7 +267,7 @@ func (m *M_qws) startQuectel() error {
 	if len(m.ifaceName) == 0 {
 		return errors.New("no ifaceName found")
 	}
-	m.cmd = exec.Command("/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifaceName)
+	m.cmd = exec.CommandContext(m.ctx, "/usr/bin/pgrep", "-f", m.Quectel+" -i "+m.ifaceName)
 	out, err := m.cmd.CombinedOutput()
 	// if err != nil {
 	// 	m.l.Debugf("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
@@ -272,7 +278,7 @@ func (m *M_qws) startQuectel() error {
 	}
 	m.l.Infof("cmd.Run(%+v)->%+v,%v", m.cmd, out, err)
 
-	m.cmd = exec.Command(m.Quectel, "-i", m.ifaceName, "&")
+	m.cmd = exec.CommandContext(m.ctx, m.Quectel, "-i", m.ifaceName, "&")
 	go func() {
 		m.wg.Add(1)
 		defer m.wg.Done()
