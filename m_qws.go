@@ -49,10 +49,7 @@ func (m *M_qws) InitWithLogger(logger *logrus.Logger) error {
 }
 
 func (m *M_qws) run(wg *sync.WaitGroup) error {
-	defer func() {
-		m.l.Info("Done")
-		wg.Done()
-	}()
+	m.l.Debugf("%#v", m)
 	t := time.NewTicker(time.Millisecond * 50)
 	defer t.Stop()
 Loop:
@@ -113,12 +110,14 @@ Loop:
 					m.l.Error(err)
 					m.state = MSTAT_INIT
 				} else {
+					m.l.Trace("goto MSTAT_CHECK_SIMREADY")
 					m.state = MSTAT_CHECK_SIMREADY
 					m.checkCount = 0
 				}
 			case MSTAT_CHECK_SIMREADY:
 				m.l.Debug("MSTAT_CHECK_SIMREADY")
 				if err := m.isSimReady(); err != nil {
+					m.l.Tracef("m.isSimReady()->%v", err)
 					if m.checkCount > 10 {
 						m.checkCount = 0
 						m.l.Error(err)
@@ -127,6 +126,7 @@ Loop:
 					m.checkCount++
 					delayTime = time.Second * 3
 				} else {
+					m.l.Trace("goto MSTAT_CHECK_REGISTRATIONM")
 					m.checkCount = 0
 					m.state = MSTAT_CHECK_REGISTRATIONM
 				}
@@ -234,6 +234,7 @@ Loop:
 					m.state = MSTAT_INIT
 				}
 			}
+			m.l.Tracef("t.Reset(%d)", delayTime)
 			t.Reset(delayTime)
 		}
 		m.l.Debug("runing")
@@ -325,8 +326,10 @@ func (m *M_qws) hotplugDetect() error {
 func (m *M_qws) isSimReady() error {
 	atcmd := []byte("at+cpin?\r\n")
 	buf := make([]byte, 128)
+	m.l.Trace("calling atWriteRead()")
 	n, err := m.atWriteRead(atcmd, buf)
 	if err != nil {
+		m.l.Tracef("atWriteRead()->%v", err)
 		return err
 	}
 	if bytes.Contains(buf, []byte("READY")) { //\r\n+CPIN: READY\r\nOK\r\n
@@ -338,6 +341,7 @@ func (m *M_qws) isSimReady() error {
 		m.l.Errorf("Unknow %q", buf[:n])
 		return errors.New("Unknow " + fmt.Sprintf("%q", buf[:n]))
 	}
+	m.l.Tracef("SimNotReady")
 	return errors.New("SimIsNotReady")
 }
 

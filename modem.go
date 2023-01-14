@@ -119,11 +119,7 @@ func (m *Modem) InitWithLogger(logger *logrus.Logger) error {
 }
 
 func (m *Modem) run(wg *sync.WaitGroup) error {
-	defer func() {
-		m.l.Info("Done")
-		wg.Done()
-	}()
-	return nil
+	return errors.New("run() Function Not implementated")
 }
 
 func (m *Modem) findIfaceName() error {
@@ -189,23 +185,29 @@ func (m *Modem) atOpen() error {
 }
 func (m *Modem) atWriteReadTimeout(wr []byte, rd []byte, t time.Duration) (int, error) {
 	if err := m.at.Flush(); err != nil {
+		m.l.Errorf("m.at.Flush()->%+v", err)
 		return -1, err
 	}
+	m.l.Trace("calling m.at.Write(wr)")
 	n, err := m.at.Write(wr)
 	if err != nil {
 		m.l.Errorf("m.at.Write(%q)->%d,%+v", wr, n, err)
 		return n, err
 	}
+	m.l.Tracef("m.at.Write(wr)->%d", n)
 	time.Sleep(t)
+	m.l.Trace("calling m.at.Read(rd)")
 	n, err = m.at.Read(rd)
 	if err != nil {
 		m.l.Errorf("m.at.Read()->%+v", err)
 		return n, err
 	}
+	m.l.Tracef("m.at.Read(rd)->%d", n)
 	m.l.Debugf("%q->%q", wr, rd[:n])
 	return n, nil
 }
 func (m *Modem) atWriteRead(wr []byte, rd []byte) (int, error) {
+	m.l.Trace("calling atWriteReadTimeout()")
 	return m.atWriteReadTimeout(wr, rd, time.Second*1)
 }
 
@@ -246,7 +248,7 @@ func (m *Modem) atSoftReset() error {
 	return errors.New("Unknow " + fmt.Sprintf("%q", bufcfun1[:n]))
 }
 func (m *Modem) hardReset() error {
-	return errors.New("Function Not implementated")
+	return errors.New("hardReset() Function Not implementated")
 }
 
 func (m *Modem) atIsOK() error {
@@ -264,15 +266,15 @@ func (m *Modem) atIsOK() error {
 }
 
 func (m *Modem) hotplugDetect() error {
-	return errors.New("Function Not implementated")
+	return errors.New("hotplugDetect() Function Not implementated")
 }
 
 func (m *Modem) isSimReady() error {
-	return errors.New("Function Not implementated")
+	return errors.New("isSimReady() Function Not implementated")
 }
 
 func (m *Modem) isRegistertion() error {
-	return errors.New("Function Not implementated")
+	return errors.New("isRegistertion() Function Not implementated")
 }
 
 func (m *Modem) hasIP() error {
@@ -310,7 +312,7 @@ func (m *Modem) hasIP() error {
 }
 
 func (m *Modem) hasGateway() error {
-	return errors.New("Function Not implementated")
+	return errors.New("hasGateway() Function Not implementated")
 }
 
 func (m *Modem) isDialUp() error {
@@ -330,6 +332,8 @@ func (m *Modem) isDialUp() error {
 }
 
 func Run(m IModem, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 	m.run(wg)
 }
 
